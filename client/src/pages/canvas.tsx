@@ -114,10 +114,8 @@ export default function Canvas() {
   // Mutations
   const createIdeaMutation = useMutation({
     mutationFn: async (data: InsertIdea) => {
-      return await apiRequest('/api/ideas', {
-        method: 'POST',
-        body: JSON.stringify(data),
-      });
+      const res = await apiRequest('POST', '/api/ideas', data);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
@@ -129,10 +127,8 @@ export default function Canvas() {
 
   const updateIdeaMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string, updates: Partial<Idea> }) => {
-      return await apiRequest(`/api/ideas/${id}`, {
-        method: 'PATCH',
-        body: JSON.stringify(updates),
-      });
+      const res = await apiRequest('PATCH', `/api/ideas/${id}`, updates);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
@@ -141,9 +137,8 @@ export default function Canvas() {
 
   const deleteIdeaMutation = useMutation({
     mutationFn: async (id: string) => {
-      return await apiRequest(`/api/ideas/${id}`, {
-        method: 'DELETE',
-      });
+      const res = await apiRequest('DELETE', `/api/ideas/${id}`);
+      return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
