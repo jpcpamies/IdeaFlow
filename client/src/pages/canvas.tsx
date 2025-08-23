@@ -111,6 +111,11 @@ export default function Canvas() {
     queryKey: ['/api/groups'],
   });
 
+  // Debug logging
+  console.log('Ideas data:', ideas);
+  console.log('Groups data:', groups);
+  console.log('Ideas loading:', ideasLoading);
+
   // Mutations
   const createIdeaMutation = useMutation({
     mutationFn: async (data: InsertIdea) => {
