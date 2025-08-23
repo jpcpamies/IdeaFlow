@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -14,6 +14,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { 
   Palette,
   Plus,
@@ -26,7 +32,12 @@ import {
   Target,
   Bookmark,
   Folder,
-  Settings
+  Settings,
+  MoreVertical,
+  Users,
+  Edit,
+  Trash2,
+  ArrowLeft
 } from "lucide-react";
 
 // Mock data for demonstration
@@ -35,58 +46,70 @@ const mockIdeaCards = [
     id: 1,
     title: "Mobile App Redesign",
     description: "Revamp the user interface for better accessibility and modern design trends",
-    color: "border-blue-400",
-    bgColor: "bg-blue-50",
-    position: { x: 120, y: 80 }
+    color: "#E2E8F0", // Default pale blue-gray
+    groupColor: "#3B82F6", // Blue for Product Ideas group
+    groupName: "Product Ideas",
+    position: { x: 120, y: 80 },
+    hasGroup: true
   },
   {
     id: 2,
     title: "AI Integration",
     description: "Explore machine learning capabilities for personalized user experiences",
-    color: "border-purple-400",
-    bgColor: "bg-purple-50",
-    position: { x: 320, y: 200 }
+    color: "#E2E8F0", // Default pale blue-gray
+    groupColor: "#8B5CF6", // Purple for Engineering group
+    groupName: "Engineering",
+    position: { x: 320, y: 200 },
+    hasGroup: true
   },
   {
     id: 3,
     title: "User Research Study",
     description: "Conduct interviews with key stakeholders and analyze user behavior patterns",
-    color: "border-green-400",
-    bgColor: "bg-green-50",
-    position: { x: 480, y: 120 }
+    color: "#E2E8F0", // Default pale blue-gray
+    groupColor: "#EF4444", // Red for Research group
+    groupName: "Research",
+    position: { x: 480, y: 120 },
+    hasGroup: true
   },
   {
     id: 4,
     title: "Marketing Campaign",
     description: "Launch targeted social media strategy to increase brand awareness",
-    color: "border-orange-400",
-    bgColor: "bg-orange-50",
-    position: { x: 240, y: 320 }
+    color: "#E2E8F0", // Default pale blue-gray
+    groupColor: "#10B981", // Green for Marketing group
+    groupName: "Marketing",
+    position: { x: 240, y: 320 },
+    hasGroup: true
   },
   {
     id: 5,
     title: "Performance Optimization",
     description: "Improve loading times and reduce server response latency",
-    color: "border-red-400",
-    bgColor: "bg-red-50",
-    position: { x: 520, y: 280 }
+    color: "#E2E8F0", // Default pale blue-gray - unassigned
+    groupColor: null,
+    groupName: null,
+    position: { x: 520, y: 280 },
+    hasGroup: false
   },
   {
     id: 6,
     title: "Database Migration",
     description: "Migrate legacy systems to modern cloud infrastructure",
-    color: "border-teal-400",
-    bgColor: "bg-teal-50",
-    position: { x: 360, y: 400 }
+    color: "#E2E8F0", // Default pale blue-gray - unassigned
+    groupColor: null,
+    groupName: null,
+    position: { x: 360, y: 400 },
+    hasGroup: false
   }
 ];
 
-const mockCategories = [
-  { id: 1, name: "Product Ideas", count: 12, color: "bg-blue-100 text-blue-800" },
-  { id: 2, name: "Marketing", count: 8, color: "bg-green-100 text-green-800" },
-  { id: 3, name: "Engineering", count: 15, color: "bg-purple-100 text-purple-800" },
-  { id: 4, name: "Design", count: 6, color: "bg-orange-100 text-orange-800" },
-  { id: 5, name: "Research", count: 4, color: "bg-pink-100 text-pink-800" }
+const mockGroups = [
+  { id: 1, name: "Product Ideas", color: "#3B82F6" },
+  { id: 2, name: "Engineering", color: "#8B5CF6" },
+  { id: 3, name: "Marketing", color: "#10B981" },
+  { id: 4, name: "Design", color: "#F59E0B" },
+  { id: 5, name: "Research", color: "#EF4444" }
 ];
 
 const mockTodoLists = [
@@ -115,6 +138,9 @@ export default function Canvas() {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isNewIdeaDialogOpen, setIsNewIdeaDialogOpen] = useState(false);
+  const [selectedCards, setSelectedCards] = useState<number[]>([]);
+  const [isGroupActionsModalOpen, setIsGroupActionsModalOpen] = useState(false);
+  const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
 
   const handleZoomIn = () => {
     setZoomLevel(prev => Math.min(prev + 25, 200));
@@ -128,6 +154,83 @@ export default function Canvas() {
     // Mock functionality - would update task completion status
     console.log('Toggle task:', taskId);
   };
+
+  const handleCardClick = (cardId: number, event: React.MouseEvent) => {
+    if (event.ctrlKey || event.metaKey) {
+      // Multi-select with Cmd/Ctrl + click
+      setSelectedCards(prev => {
+        if (prev.includes(cardId)) {
+          return prev.filter(id => id !== cardId);
+        } else {
+          return [...prev, cardId];
+        }
+      });
+    } else {
+      // Single select or deselect all if clicking selected card
+      if (selectedCards.length === 1 && selectedCards[0] === cardId) {
+        setSelectedCards([]);
+      } else {
+        setSelectedCards([cardId]);
+      }
+    }
+  };
+
+  const handleEditIdea = (cardId: number) => {
+    console.log('Edit idea:', cardId);
+    // Would open edit modal
+  };
+
+  const handleDeleteIdea = (cardId: number) => {
+    console.log('Delete idea:', cardId);
+    // Would show confirmation and delete
+  };
+
+  const handleGroupActions = () => {
+    setIsGroupActionsModalOpen(true);
+  };
+
+  const handleAssignToGroup = (groupId: number) => {
+    console.log('Assign cards to group:', selectedCards, groupId);
+    // Would update cards with new group assignment
+    setIsAssignGroupModalOpen(false);
+    setIsGroupActionsModalOpen(false);
+    setSelectedCards([]);
+  };
+
+  const handleCreateNewGroup = () => {
+    console.log('Create new group for cards:', selectedCards);
+    // Would open create group modal
+    setIsGroupActionsModalOpen(false);
+    setSelectedCards([]);
+  };
+
+  const handleRemoveFromGroups = () => {
+    console.log('Remove cards from all groups:', selectedCards);
+    // Would remove group assignments
+    setIsGroupActionsModalOpen(false);
+    setSelectedCards([]);
+  };
+
+  const handleDeleteSelectedCards = () => {
+    console.log('Delete selected cards:', selectedCards);
+    // Would show confirmation and delete cards
+    setIsGroupActionsModalOpen(false);
+    setSelectedCards([]);
+  };
+
+  // Calculate center position of selected cards for action button
+  const getSelectionCenter = () => {
+    if (selectedCards.length === 0) return { x: 0, y: 0 };
+    
+    const selectedCardData = mockIdeaCards.filter(card => selectedCards.includes(card.id));
+    const centerX = selectedCardData.reduce((sum, card) => sum + card.position.x, 0) / selectedCardData.length;
+    const centerY = selectedCardData.reduce((sum, card) => sum + card.position.y, 0) / selectedCardData.length;
+    
+    return { x: centerX + 128, y: centerY + 60 }; // Offset for card center
+  };
+
+  const selectionCenter = getSelectionCenter();
+  const hasMultiSelection = selectedCards.length >= 2;
 
   return (
     <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
@@ -193,16 +296,6 @@ export default function Canvas() {
                       data-testid="textarea-idea-description"
                     />
                   </div>
-                  <div className="grid gap-2">
-                    <label className="text-sm font-medium">Category</label>
-                    <select className="w-full p-2 border rounded-md" data-testid="select-idea-category">
-                      <option>Product Ideas</option>
-                      <option>Marketing</option>
-                      <option>Engineering</option>
-                      <option>Design</option>
-                      <option>Research</option>
-                    </select>
-                  </div>
                 </div>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setIsNewIdeaDialogOpen(false)}>
@@ -218,20 +311,23 @@ export default function Canvas() {
 
           <div className="flex-1 overflow-y-auto p-4">
             <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Categories</h3>
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Groups</h3>
               <div className="space-y-2">
-                {mockCategories.map((category) => (
+                {mockGroups.map((group) => (
                   <div 
-                    key={category.id} 
+                    key={group.id} 
                     className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
-                    data-testid={`category-${category.id}`}
+                    data-testid={`group-${group.id}`}
                   >
                     <div className="flex items-center space-x-2">
-                      <Folder className="w-4 h-4 text-gray-400" />
-                      <span className="text-sm text-gray-700">{category.name}</span>
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: group.color }}
+                      />
+                      <span className="text-sm text-gray-700">{group.name}</span>
                     </div>
-                    <Badge className={`text-xs ${category.color}`}>
-                      {category.count}
+                    <Badge className="text-xs bg-gray-100 text-gray-600">
+                      {mockIdeaCards.filter(card => card.groupName === group.name).length}
                     </Badge>
                   </div>
                 ))}
@@ -299,6 +395,13 @@ export default function Canvas() {
             </Button>
           </div>
 
+          {/* Multi-Selection Counter */}
+          {hasMultiSelection && (
+            <div className="absolute top-4 left-4 bg-blue-600 text-white px-3 py-1 rounded-full text-sm font-medium z-20">
+              {selectedCards.length} selected
+            </div>
+          )}
+
           {/* Canvas Content */}
           <div 
             className="absolute inset-0 p-8 overflow-auto"
@@ -310,43 +413,121 @@ export default function Canvas() {
             }}
           >
             {/* Mock Idea Cards */}
-            {mockIdeaCards.map((idea) => (
-              <Card 
-                key={idea.id}
-                className={`absolute w-64 ${idea.bgColor} border-2 ${idea.color} shadow-md hover:shadow-lg transition-all cursor-move hover:scale-105`}
+            {mockIdeaCards.map((idea) => {
+              const isSelected = selectedCards.includes(idea.id);
+              const cardColor = idea.hasGroup ? idea.groupColor : idea.color;
+              
+              return (
+                <Card 
+                  key={idea.id}
+                  className={`absolute w-64 shadow-md hover:shadow-lg transition-all cursor-pointer border-2 ${
+                    isSelected 
+                      ? 'border-blue-500 shadow-blue-200' 
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  style={{ 
+                    left: idea.position.x, 
+                    top: idea.position.y,
+                    backgroundColor: cardColor
+                  }}
+                  onClick={(e) => handleCardClick(idea.id, e)}
+                  data-testid={`idea-card-${idea.id}`}
+                >
+                  <CardContent className="p-4 relative">
+                    {/* Three-dot menu - only show when no multi-selection */}
+                    {!hasMultiSelection && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            className="absolute top-2 right-2 h-6 w-6 p-0 hover:bg-white/20"
+                            data-testid={`menu-button-${idea.id}`}
+                          >
+                            <MoreVertical className="w-4 h-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEditIdea(idea.id);
+                            }}
+                          >
+                            <Edit className="mr-2 w-4 h-4" />
+                            Edit Idea
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteIdea(idea.id);
+                            }}
+                            className="text-red-600"
+                          >
+                            <Trash2 className="mr-2 w-4 h-4" />
+                            Delete Idea
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+
+                    <h3 className="font-semibold text-gray-900 mb-2 text-sm pr-8">
+                      {idea.title}
+                    </h3>
+                    <p className="text-xs text-gray-600 leading-relaxed mb-3">
+                      {idea.description}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      {idea.hasGroup ? (
+                        <Badge 
+                          variant="outline" 
+                          className="text-xs border-white/30 bg-white/20"
+                        >
+                          {idea.groupName}
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs bg-white/20">
+                          Unassigned
+                        </Badge>
+                      )}
+                      <div className="w-2 h-2 rounded-full bg-white/40"></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {/* Multi-Selection Action Button */}
+            {hasMultiSelection && (
+              <div
+                className="absolute z-30"
                 style={{ 
-                  left: idea.position.x, 
-                  top: idea.position.y 
+                  left: selectionCenter.x - 24, 
+                  top: selectionCenter.y - 24 
                 }}
-                data-testid={`idea-card-${idea.id}`}
               >
-                <CardContent className="p-4">
-                  <h3 className="font-semibold text-gray-900 mb-2 text-sm">
-                    {idea.title}
-                  </h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    {idea.description}
-                  </p>
-                  <div className="mt-3 flex items-center justify-between">
-                    <Badge variant="outline" className="text-xs">
-                      Idea
-                    </Badge>
-                    <div className="w-2 h-2 rounded-full bg-gray-400"></div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                <Button
+                  className="w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl transition-all"
+                  onClick={handleGroupActions}
+                  data-testid="multi-select-action-button"
+                >
+                  <Users className="w-5 h-5 text-white" />
+                </Button>
+              </div>
+            )}
 
             {/* Canvas Instructions */}
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-              <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
-                <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Infinite Canvas</h3>
-                <p className="text-sm text-gray-600">
-                  Drag ideas around • Zoom to explore • Click cards to edit
-                </p>
+            {mockIdeaCards.length === 0 && (
+              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
+                  <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Infinite Canvas</h3>
+                  <p className="text-sm text-gray-600">
+                    Drag ideas around • Zoom to explore • Cmd/Ctrl+click to multi-select
+                  </p>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </main>
 
@@ -444,6 +625,111 @@ export default function Canvas() {
           </Button>
         )}
       </div>
+
+      {/* Group Actions Modal */}
+      <Dialog open={isGroupActionsModalOpen} onOpenChange={setIsGroupActionsModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Group Actions</DialogTitle>
+            <DialogDescription>
+              Choose an action for {selectedCards.length} selected cards
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-4">
+            <Button 
+              variant="outline" 
+              className="justify-start h-12"
+              onClick={() => setIsAssignGroupModalOpen(true)}
+            >
+              <Users className="mr-3 w-4 h-4" />
+              Assign to Existing Group
+            </Button>
+            <Button 
+              variant="outline" 
+              className="justify-start h-12"
+              onClick={handleCreateNewGroup}
+            >
+              <Plus className="mr-3 w-4 h-4" />
+              Create New Group
+            </Button>
+            <Button 
+              variant="outline" 
+              className="justify-start h-12"
+              onClick={handleRemoveFromGroups}
+            >
+              <Target className="mr-3 w-4 h-4" />
+              Remove from All Groups
+            </Button>
+            <Button 
+              variant="outline" 
+              className="justify-start h-12 text-red-600 border-red-200 hover:bg-red-50"
+              onClick={handleDeleteSelectedCards}
+            >
+              <Trash2 className="mr-3 w-4 h-4" />
+              Delete Selected Cards
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsGroupActionsModalOpen(false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign to Group Sub-Modal */}
+      <Dialog open={isAssignGroupModalOpen} onOpenChange={setIsAssignGroupModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-1 h-8 w-8"
+                onClick={() => {
+                  setIsAssignGroupModalOpen(false);
+                  setIsGroupActionsModalOpen(true);
+                }}
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+              <div>
+                <DialogTitle>Assign to Group</DialogTitle>
+                <DialogDescription>
+                  Select a group for {selectedCards.length} cards
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="grid gap-2 py-4 max-h-64 overflow-y-auto">
+            {mockGroups.map((group) => (
+              <Button
+                key={group.id}
+                variant="outline"
+                className="justify-start h-12"
+                onClick={() => handleAssignToGroup(group.id)}
+              >
+                <div 
+                  className="w-4 h-4 rounded-full mr-3"
+                  style={{ backgroundColor: group.color }}
+                />
+                {group.name}
+              </Button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsAssignGroupModalOpen(false)}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
