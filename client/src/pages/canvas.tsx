@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -39,79 +40,20 @@ import {
   Trash2,
   ArrowLeft
 } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import type { Idea, Group, InsertIdea } from "@shared/schema";
+import { useAuth } from "@/hooks/useAuth";
 
-// Mock data for demonstration
-const mockIdeaCards = [
-  {
-    id: 1,
-    title: "Mobile App Redesign",
-    description: "Revamp the user interface for better accessibility and modern design trends",
-    color: "#E2E8F0", // Default pale blue-gray
-    groupColor: "#3B82F6", // Blue for Product Ideas group
-    groupName: "Product Ideas",
-    position: { x: 120, y: 80 },
-    hasGroup: true
-  },
-  {
-    id: 2,
-    title: "AI Integration",
-    description: "Explore machine learning capabilities for personalized user experiences",
-    color: "#E2E8F0", // Default pale blue-gray
-    groupColor: "#8B5CF6", // Purple for Engineering group
-    groupName: "Engineering",
-    position: { x: 320, y: 200 },
-    hasGroup: true
-  },
-  {
-    id: 3,
-    title: "User Research Study",
-    description: "Conduct interviews with key stakeholders and analyze user behavior patterns",
-    color: "#E2E8F0", // Default pale blue-gray
-    groupColor: "#EF4444", // Red for Research group
-    groupName: "Research",
-    position: { x: 480, y: 120 },
-    hasGroup: true
-  },
-  {
-    id: 4,
-    title: "Marketing Campaign",
-    description: "Launch targeted social media strategy to increase brand awareness",
-    color: "#E2E8F0", // Default pale blue-gray
-    groupColor: "#10B981", // Green for Marketing group
-    groupName: "Marketing",
-    position: { x: 240, y: 320 },
-    hasGroup: true
-  },
-  {
-    id: 5,
-    title: "Performance Optimization",
-    description: "Improve loading times and reduce server response latency",
-    color: "#E2E8F0", // Default pale blue-gray - unassigned
-    groupColor: null,
-    groupName: null,
-    position: { x: 520, y: 280 },
-    hasGroup: false
-  },
-  {
-    id: 6,
-    title: "Database Migration",
-    description: "Migrate legacy systems to modern cloud infrastructure",
-    color: "#E2E8F0", // Default pale blue-gray - unassigned
-    groupColor: null,
-    groupName: null,
-    position: { x: 360, y: 400 },
-    hasGroup: false
-  }
-];
+// Drag state interface
+interface DragState {
+  isDragging: boolean;
+  dragCardId: string | null;
+  startPos: { x: number, y: number };
+  offset: { x: number, y: number };
+  initialPositions: Record<string, { x: number, y: number }>;
+}
 
-const mockGroups = [
-  { id: 1, name: "Product Ideas", color: "#3B82F6" },
-  { id: 2, name: "Engineering", color: "#8B5CF6" },
-  { id: 3, name: "Marketing", color: "#10B981" },
-  { id: 4, name: "Design", color: "#F59E0B" },
-  { id: 5, name: "Research", color: "#EF4444" }
-];
-
+// Mock todo lists for now (will be replaced with real data later)
 const mockTodoLists = [
   {
     id: 1,
@@ -135,13 +77,80 @@ const mockTodoLists = [
 ];
 
 export default function Canvas() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const canvasRef = useRef<HTMLDivElement>(null);
+  
+  // UI State
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(100);
   const [isNewIdeaDialogOpen, setIsNewIdeaDialogOpen] = useState(false);
-  const [selectedCards, setSelectedCards] = useState<number[]>([]);
+  const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [isGroupActionsModalOpen, setIsGroupActionsModalOpen] = useState(false);
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
+  
+  // Form State
+  const [newIdeaTitle, setNewIdeaTitle] = useState("");
+  const [newIdeaDescription, setNewIdeaDescription] = useState("");
+  
+  // Drag State
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    dragCardId: null,
+    startPos: { x: 0, y: 0 },
+    offset: { x: 0, y: 0 },
+    initialPositions: {}
+  });
 
+  // API Queries
+  const { data: ideas = [], isLoading: ideasLoading } = useQuery({
+    queryKey: ['/api/ideas'],
+  });
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['/api/groups'],
+  });
+
+  // Mutations
+  const createIdeaMutation = useMutation({
+    mutationFn: async (data: InsertIdea) => {
+      return await apiRequest('/api/ideas', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      setNewIdeaTitle("");
+      setNewIdeaDescription("");
+      setIsNewIdeaDialogOpen(false);
+    },
+  });
+
+  const updateIdeaMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string, updates: Partial<Idea> }) => {
+      return await apiRequest(`/api/ideas/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(updates),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+    },
+  });
+
+  const deleteIdeaMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return await apiRequest(`/api/ideas/${id}`, {
+        method: 'DELETE',
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+    },
+  });
+
+  // Zoom functions
   const handleZoomIn = () => {
     setZoomLevel(prev => Math.min(prev + 25, 200));
   };
@@ -150,12 +159,54 @@ export default function Canvas() {
     setZoomLevel(prev => Math.max(prev - 25, 50));
   };
 
-  const handleToggleTask = (taskId: number) => {
-    // Mock functionality - would update task completion status
-    console.log('Toggle task:', taskId);
+  // Idea CRUD functions
+  const handleCreateIdea = () => {
+    if (!newIdeaTitle.trim()) return;
+    
+    // Find a good position for the new card
+    const existingPositions = ideas.map((idea: Idea) => ({ x: idea.canvasX, y: idea.canvasY }));
+    let newX = 100;
+    let newY = 100;
+    
+    // Simple positioning logic - place new cards in a grid
+    const gridSize = 300;
+    while (existingPositions.some(pos => 
+      Math.abs(pos.x - newX) < gridSize && Math.abs(pos.y - newY) < gridSize
+    )) {
+      newX += gridSize;
+      if (newX > 1000) {
+        newX = 100;
+        newY += 250;
+      }
+    }
+
+    createIdeaMutation.mutate({
+      userId: user?.id || "",
+      title: newIdeaTitle,
+      description: newIdeaDescription,
+      color: "#E2E8F0",
+      canvasX: newX,
+      canvasY: newY,
+      groupId: null
+    });
   };
 
-  const handleCardClick = (cardId: number, event: React.MouseEvent) => {
+  const handleEditIdea = (ideaId: string) => {
+    console.log('Edit idea:', ideaId);
+    // TODO: Implement edit modal
+  };
+
+  const handleDeleteIdea = (ideaId: string) => {
+    if (window.confirm("Are you sure you want to delete this idea?")) {
+      deleteIdeaMutation.mutate(ideaId);
+    }
+  };
+
+  // Card selection functions
+  const handleCardClick = (cardId: string, event: React.MouseEvent) => {
+    // Don't trigger selection if we're dragging
+    if (dragState.isDragging) return;
+    
     if (event.ctrlKey || event.metaKey) {
       // Multi-select with Cmd/Ctrl + click
       setSelectedCards(prev => {
@@ -175,23 +226,14 @@ export default function Canvas() {
     }
   };
 
-  const handleEditIdea = (cardId: number) => {
-    console.log('Edit idea:', cardId);
-    // Would open edit modal
-  };
-
-  const handleDeleteIdea = (cardId: number) => {
-    console.log('Delete idea:', cardId);
-    // Would show confirmation and delete
-  };
-
+  // Group action functions
   const handleGroupActions = () => {
     setIsGroupActionsModalOpen(true);
   };
 
-  const handleAssignToGroup = (groupId: number) => {
+  const handleAssignToGroup = (groupId: string) => {
     console.log('Assign cards to group:', selectedCards, groupId);
-    // Would update cards with new group assignment
+    // TODO: Implement group assignment
     setIsAssignGroupModalOpen(false);
     setIsGroupActionsModalOpen(false);
     setSelectedCards([]);
@@ -199,38 +241,196 @@ export default function Canvas() {
 
   const handleCreateNewGroup = () => {
     console.log('Create new group for cards:', selectedCards);
-    // Would open create group modal
     setIsGroupActionsModalOpen(false);
     setSelectedCards([]);
   };
 
   const handleRemoveFromGroups = () => {
     console.log('Remove cards from all groups:', selectedCards);
-    // Would remove group assignments
     setIsGroupActionsModalOpen(false);
     setSelectedCards([]);
   };
 
   const handleDeleteSelectedCards = () => {
-    console.log('Delete selected cards:', selectedCards);
-    // Would show confirmation and delete cards
-    setIsGroupActionsModalOpen(false);
-    setSelectedCards([]);
+    if (window.confirm(`Are you sure you want to delete ${selectedCards.length} selected ideas?`)) {
+      selectedCards.forEach(id => {
+        deleteIdeaMutation.mutate(id);
+      });
+      setIsGroupActionsModalOpen(false);
+      setSelectedCards([]);
+    }
+  };
+
+  // Drag and Drop functions
+  const handleMouseDown = (event: React.MouseEvent, cardId: string) => {
+    // Only start drag on left mouse button
+    if (event.button !== 0) return;
+    
+    // Don't start drag if clicking on menu buttons
+    const target = event.target as HTMLElement;
+    if (target.closest('button')) return;
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const rect = canvasRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    
+    const mouseX = (event.clientX - rect.left) / (zoomLevel / 100);
+    const mouseY = (event.clientY - rect.top) / (zoomLevel / 100);
+    
+    // Get the card element to calculate offset
+    const cardElement = event.currentTarget as HTMLElement;
+    const cardRect = cardElement.getBoundingClientRect();
+    const offsetX = (event.clientX - cardRect.left) / (zoomLevel / 100);
+    const offsetY = (event.clientY - cardRect.top) / (zoomLevel / 100);
+    
+    // If clicking on an unselected card, select it
+    if (!selectedCards.includes(cardId)) {
+      setSelectedCards([cardId]);
+    }
+    
+    // Get initial positions of all cards that will be dragged
+    const cardsToMove = selectedCards.includes(cardId) ? selectedCards : [cardId];
+    const initialPositions: Record<string, { x: number, y: number }> = {};
+    
+    cardsToMove.forEach(id => {
+      const idea = ideas.find((i: Idea) => i.id === id);
+      if (idea) {
+        initialPositions[id] = { x: idea.canvasX, y: idea.canvasY };
+      }
+    });
+    
+    setDragState({
+      isDragging: true,
+      dragCardId: cardId,
+      startPos: { x: mouseX, y: mouseY },
+      offset: { x: offsetX, y: offsetY },
+      initialPositions
+    });
+  };
+
+  const handleMouseMove = (event: MouseEvent) => {
+    if (!dragState.isDragging || !canvasRef.current) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    const mouseX = (event.clientX - rect.left) / (zoomLevel / 100);
+    const mouseY = (event.clientY - rect.top) / (zoomLevel / 100);
+    
+    const deltaX = mouseX - dragState.startPos.x;
+    const deltaY = mouseY - dragState.startPos.y;
+    
+    // Update positions of all selected cards
+    const cardsToMove = selectedCards.includes(dragState.dragCardId!) 
+      ? selectedCards 
+      : [dragState.dragCardId!];
+    
+    cardsToMove.forEach(cardId => {
+      const initialPos = dragState.initialPositions[cardId];
+      if (initialPos) {
+        const newX = Math.max(0, initialPos.x + deltaX);
+        const newY = Math.max(0, initialPos.y + deltaY);
+        
+        // Update the card position immediately in the UI
+        const cardElement = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement;
+        if (cardElement) {
+          cardElement.style.left = `${newX}px`;
+          cardElement.style.top = `${newY}px`;
+          cardElement.style.cursor = 'grabbing';
+          cardElement.style.userSelect = 'none';
+          cardElement.style.pointerEvents = 'none';
+          cardElement.style.zIndex = '1000';
+          cardElement.style.transform = 'rotate(2deg)';
+          cardElement.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
+        }
+      }
+    });
+  };
+
+  const handleMouseUp = () => {
+    if (!dragState.isDragging) return;
+    
+    const cardsToMove = selectedCards.includes(dragState.dragCardId!) 
+      ? selectedCards 
+      : [dragState.dragCardId!];
+    
+    // Save final positions to database
+    cardsToMove.forEach(cardId => {
+      const cardElement = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement;
+      if (cardElement) {
+        const finalX = parseInt(cardElement.style.left);
+        const finalY = parseInt(cardElement.style.top);
+        
+        // Reset visual effects
+        cardElement.style.cursor = 'pointer';
+        cardElement.style.userSelect = '';
+        cardElement.style.pointerEvents = '';
+        cardElement.style.zIndex = '';
+        cardElement.style.transform = '';
+        cardElement.style.boxShadow = '';
+        
+        // Update database
+        updateIdeaMutation.mutate({
+          id: cardId,
+          updates: { canvasX: finalX, canvasY: finalY }
+        });
+      }
+    });
+    
+    setDragState({
+      isDragging: false,
+      dragCardId: null,
+      startPos: { x: 0, y: 0 },
+      offset: { x: 0, y: 0 },
+      initialPositions: {}
+    });
+  };
+
+  // Mouse event listeners
+  useEffect(() => {
+    if (dragState.isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'grabbing';
+      
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+        document.body.style.cursor = '';
+      };
+    }
+  }, [dragState.isDragging, dragState.startPos, dragState.initialPositions, selectedCards, zoomLevel]);
+
+  // Task toggle function
+  const handleToggleTask = (taskId: number) => {
+    console.log('Toggle task:', taskId);
+    // TODO: Implement task toggling
   };
 
   // Calculate center position of selected cards for action button
   const getSelectionCenter = () => {
     if (selectedCards.length === 0) return { x: 0, y: 0 };
     
-    const selectedCardData = mockIdeaCards.filter(card => selectedCards.includes(card.id));
-    const centerX = selectedCardData.reduce((sum, card) => sum + card.position.x, 0) / selectedCardData.length;
-    const centerY = selectedCardData.reduce((sum, card) => sum + card.position.y, 0) / selectedCardData.length;
+    const selectedCardData = ideas.filter((idea: Idea) => selectedCards.includes(idea.id));
+    const centerX = selectedCardData.reduce((sum: number, idea: Idea) => sum + idea.canvasX, 0) / selectedCardData.length;
+    const centerY = selectedCardData.reduce((sum: number, idea: Idea) => sum + idea.canvasY, 0) / selectedCardData.length;
     
     return { x: centerX + 128, y: centerY + 60 }; // Offset for card center
   };
 
   const selectionCenter = getSelectionCenter();
   const hasMultiSelection = selectedCards.length >= 2;
+
+  if (ideasLoading) {
+    return (
+      <div className="h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading your ideas...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
@@ -248,7 +448,7 @@ export default function Canvas() {
             <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
               <User className="w-4 h-4 text-gray-600" />
             </div>
-            <span className="text-sm text-gray-700">John Doe</span>
+            <span className="text-sm text-gray-700">{user?.firstName || 'User'}</span>
           </div>
           <Button variant="ghost" size="sm">
             <Settings className="w-4 h-4" />
@@ -282,6 +482,8 @@ export default function Canvas() {
                     <Input
                       id="idea-title"
                       placeholder="Enter your idea title..."
+                      value={newIdeaTitle}
+                      onChange={(e) => setNewIdeaTitle(e.target.value)}
                       data-testid="input-idea-title"
                     />
                   </div>
@@ -293,6 +495,8 @@ export default function Canvas() {
                       id="idea-description"
                       placeholder="Describe your idea in detail..."
                       className="resize-none"
+                      value={newIdeaDescription}
+                      onChange={(e) => setNewIdeaDescription(e.target.value)}
                       data-testid="textarea-idea-description"
                     />
                   </div>
@@ -301,8 +505,12 @@ export default function Canvas() {
                   <Button variant="outline" onClick={() => setIsNewIdeaDialogOpen(false)}>
                     Cancel
                   </Button>
-                  <Button onClick={() => setIsNewIdeaDialogOpen(false)} data-testid="button-save-idea">
-                    Save Idea
+                  <Button 
+                    onClick={handleCreateIdea} 
+                    disabled={!newIdeaTitle.trim() || createIdeaMutation.isPending}
+                    data-testid="button-save-idea"
+                  >
+                    {createIdeaMutation.isPending ? 'Creating...' : 'Save Idea'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
@@ -313,7 +521,7 @@ export default function Canvas() {
             <div className="mb-6">
               <h3 className="text-sm font-medium text-gray-900 mb-3">Groups</h3>
               <div className="space-y-2">
-                {mockGroups.map((group) => (
+                {groups.map((group: Group) => (
                   <div 
                     key={group.id} 
                     className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
@@ -327,7 +535,7 @@ export default function Canvas() {
                       <span className="text-sm text-gray-700">{group.name}</span>
                     </div>
                     <Badge className="text-xs bg-gray-100 text-gray-600">
-                      {mockIdeaCards.filter(card => card.groupName === group.name).length}
+                      {ideas.filter((idea: Idea) => idea.groupId === group.id).length}
                     </Badge>
                   </div>
                 ))}
@@ -351,7 +559,7 @@ export default function Canvas() {
 
           <div className="p-4 border-t border-gray-200">
             <div className="text-xs text-gray-500 text-center">
-              {mockIdeaCards.length} ideas • {mockTodoLists.reduce((acc, list) => acc + list.tasks.length, 0)} tasks
+              {ideas.length} ideas • {mockTodoLists.reduce((acc, list) => acc + list.tasks.length, 0)} tasks
             </div>
           </div>
         </aside>
@@ -404,6 +612,7 @@ export default function Canvas() {
 
           {/* Canvas Content */}
           <div 
+            ref={canvasRef}
             className="absolute inset-0 p-8 overflow-auto"
             style={{ 
               transform: `scale(${zoomLevel / 100})`,
@@ -412,25 +621,29 @@ export default function Canvas() {
               height: `${10000 / (zoomLevel / 100)}px`
             }}
           >
-            {/* Mock Idea Cards */}
-            {mockIdeaCards.map((idea) => {
+            {/* Idea Cards */}
+            {ideas.map((idea: Idea) => {
               const isSelected = selectedCards.includes(idea.id);
-              const cardColor = idea.hasGroup ? idea.groupColor : idea.color;
+              const group = groups.find((g: Group) => g.id === idea.groupId);
+              const cardColor = group ? group.color : idea.color;
               
               return (
                 <Card 
                   key={idea.id}
+                  data-card-id={idea.id}
                   className={`absolute w-64 shadow-md hover:shadow-lg transition-all cursor-pointer border-2 ${
                     isSelected 
                       ? 'border-blue-500 shadow-blue-200' 
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                   style={{ 
-                    left: idea.position.x, 
-                    top: idea.position.y,
-                    backgroundColor: cardColor
+                    left: idea.canvasX, 
+                    top: idea.canvasY,
+                    backgroundColor: cardColor,
+                    cursor: dragState.isDragging ? 'grabbing' : 'pointer'
                   }}
                   onClick={(e) => handleCardClick(idea.id, e)}
+                  onMouseDown={(e) => handleMouseDown(e, idea.id)}
                   data-testid={`idea-card-${idea.id}`}
                 >
                   <CardContent className="p-4 relative">
@@ -478,12 +691,12 @@ export default function Canvas() {
                       {idea.description}
                     </p>
                     <div className="flex items-center justify-between">
-                      {idea.hasGroup ? (
+                      {group ? (
                         <Badge 
                           variant="outline" 
                           className="text-xs border-white/30 bg-white/20"
                         >
-                          {idea.groupName}
+                          {group.name}
                         </Badge>
                       ) : (
                         <Badge variant="outline" className="text-xs bg-white/20">
@@ -517,7 +730,7 @@ export default function Canvas() {
             )}
 
             {/* Canvas Instructions */}
-            {mockIdeaCards.length === 0 && (
+            {ideas.length === 0 && (
               <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
                 <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
                   <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
@@ -605,11 +818,11 @@ export default function Canvas() {
           <div className="p-4 border-t border-gray-200">
             <Button 
               variant="outline" 
-              className="w-full border-dashed"
-              data-testid="button-new-list"
+              className="w-full" 
+              data-testid="button-new-todo-list"
             >
               <Plus className="mr-2 w-4 h-4" />
-              New List
+              New To-Do List
             </Button>
           </div>
         </aside>
@@ -617,9 +830,11 @@ export default function Canvas() {
         {/* Sidebar Toggle Button (when collapsed) */}
         {!isRightSidebarOpen && (
           <Button
-            className="fixed right-4 top-1/2 transform -translate-y-1/2 z-20 h-12 w-8 rounded-l-lg rounded-r-none bg-white border border-gray-200 shadow-md hover:bg-gray-50"
+            variant="ghost"
+            size="sm"
+            className="absolute top-20 right-4 z-10 bg-white shadow-md"
             onClick={() => setIsRightSidebarOpen(true)}
-            data-testid="button-expand-sidebar"
+            data-testid="button-show-sidebar"
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
@@ -632,51 +847,47 @@ export default function Canvas() {
           <DialogHeader>
             <DialogTitle>Group Actions</DialogTitle>
             <DialogDescription>
-              Choose an action for {selectedCards.length} selected cards
+              Choose an action for the {selectedCards.length} selected idea{selectedCards.length > 1 ? 's' : ''}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-4">
             <Button 
               variant="outline" 
-              className="justify-start h-12"
+              className="justify-start"
               onClick={() => setIsAssignGroupModalOpen(true)}
+              data-testid="button-assign-to-group"
             >
-              <Users className="mr-3 w-4 h-4" />
-              Assign to Existing Group
+              <Folder className="mr-2 w-4 h-4" />
+              Assign to Group
             </Button>
             <Button 
               variant="outline" 
-              className="justify-start h-12"
+              className="justify-start"
               onClick={handleCreateNewGroup}
+              data-testid="button-create-new-group"
             >
-              <Plus className="mr-3 w-4 h-4" />
+              <Plus className="mr-2 w-4 h-4" />
               Create New Group
             </Button>
             <Button 
               variant="outline" 
-              className="justify-start h-12"
+              className="justify-start"
               onClick={handleRemoveFromGroups}
+              data-testid="button-remove-from-groups"
             >
-              <Target className="mr-3 w-4 h-4" />
-              Remove from All Groups
+              <ArrowLeft className="mr-2 w-4 h-4" />
+              Remove from Groups
             </Button>
             <Button 
               variant="outline" 
-              className="justify-start h-12 text-red-600 border-red-200 hover:bg-red-50"
+              className="justify-start text-red-600 hover:text-red-700"
               onClick={handleDeleteSelectedCards}
+              data-testid="button-delete-selected"
             >
-              <Trash2 className="mr-3 w-4 h-4" />
-              Delete Selected Cards
+              <Trash2 className="mr-2 w-4 h-4" />
+              Delete Selected
             </Button>
           </div>
-          <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setIsGroupActionsModalOpen(false)}
-            >
-              Cancel
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -684,47 +895,37 @@ export default function Canvas() {
       <Dialog open={isAssignGroupModalOpen} onOpenChange={setIsAssignGroupModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="p-1 h-8 w-8"
-                onClick={() => {
-                  setIsAssignGroupModalOpen(false);
-                  setIsGroupActionsModalOpen(true);
-                }}
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </Button>
-              <div>
-                <DialogTitle>Assign to Group</DialogTitle>
-                <DialogDescription>
-                  Select a group for {selectedCards.length} cards
-                </DialogDescription>
-              </div>
-            </div>
+            <DialogTitle>Assign to Group</DialogTitle>
+            <DialogDescription>
+              Select a group for the selected ideas
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2 py-4 max-h-64 overflow-y-auto">
-            {mockGroups.map((group) => (
-              <Button
+          <div className="grid gap-2 py-4 max-h-60 overflow-y-auto">
+            {groups.map((group: Group) => (
+              <Button 
                 key={group.id}
-                variant="outline"
-                className="justify-start h-12"
+                variant="outline" 
+                className="justify-start h-auto p-3"
                 onClick={() => handleAssignToGroup(group.id)}
+                data-testid={`button-assign-group-${group.id}`}
               >
-                <div 
-                  className="w-4 h-4 rounded-full mr-3"
-                  style={{ backgroundColor: group.color }}
-                />
-                {group.name}
+                <div className="flex items-center space-x-3">
+                  <div 
+                    className="w-4 h-4 rounded-full flex-shrink-0" 
+                    style={{ backgroundColor: group.color }}
+                  />
+                  <span className="text-left">{group.name}</span>
+                </div>
               </Button>
             ))}
+            {groups.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">
+                No groups available. Create a group first.
+              </p>
+            )}
           </div>
           <DialogFooter>
-            <Button 
-              variant="outline" 
-              onClick={() => setIsAssignGroupModalOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setIsAssignGroupModalOpen(false)}>
               Cancel
             </Button>
           </DialogFooter>

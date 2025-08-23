@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertProjectSchema, insertTaskSchema } from "@shared/schema";
+import { insertProjectSchema, insertTaskSchema, insertIdeaSchema, insertGroupSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -169,6 +169,118 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting task:", error);
       res.status(500).json({ message: "Failed to delete task" });
+    }
+  });
+
+  // Idea routes
+  app.get('/api/ideas', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const ideas = await storage.getUserIdeas(userId);
+      res.json(ideas);
+    } catch (error) {
+      console.error("Error fetching ideas:", error);
+      res.status(500).json({ message: "Failed to fetch ideas" });
+    }
+  });
+
+  app.get('/api/ideas/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const idea = await storage.getIdea(req.params.id);
+      if (!idea) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+      
+      // Check if user owns the idea
+      const userId = req.user.claims.sub;
+      if (idea.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      res.json(idea);
+    } catch (error) {
+      console.error("Error fetching idea:", error);
+      res.status(500).json({ message: "Failed to fetch idea" });
+    }
+  });
+
+  app.post('/api/ideas', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const ideaData = insertIdeaSchema.parse({ ...req.body, userId });
+      const idea = await storage.createIdea(ideaData);
+      res.json(idea);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid idea data", errors: error.errors });
+      }
+      console.error("Error creating idea:", error);
+      res.status(500).json({ message: "Failed to create idea" });
+    }
+  });
+
+  app.patch('/api/ideas/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const idea = await storage.getIdea(req.params.id);
+      
+      if (!idea || idea.userId !== userId) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+      
+      const updates = insertIdeaSchema.partial().parse(req.body);
+      const updatedIdea = await storage.updateIdea(req.params.id, updates);
+      res.json(updatedIdea);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      console.error("Error updating idea:", error);
+      res.status(500).json({ message: "Failed to update idea" });
+    }
+  });
+
+  app.delete('/api/ideas/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const idea = await storage.getIdea(req.params.id);
+      
+      if (!idea || idea.userId !== userId) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+      
+      await storage.deleteIdea(req.params.id);
+      res.json({ message: "Idea deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting idea:", error);
+      res.status(500).json({ message: "Failed to delete idea" });
+    }
+  });
+
+  // Group routes
+  app.get('/api/groups', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const groups = await storage.getUserGroups(userId);
+      res.json(groups);
+    } catch (error) {
+      console.error("Error fetching groups:", error);
+      res.status(500).json({ message: "Failed to fetch groups" });
+    }
+  });
+
+  app.post('/api/groups', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const groupData = insertGroupSchema.parse({ ...req.body, userId });
+      const group = await storage.createGroup(groupData);
+      res.json(group);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid group data", errors: error.errors });
+      }
+      console.error("Error creating group:", error);
+      res.status(500).json({ message: "Failed to create group" });
     }
   });
 
