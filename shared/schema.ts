@@ -39,10 +39,20 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Ideas table - stores canvas ideas with positioning
+// Groups table - for organizing ideas and todos (renamed from Categories)
+export const groups = pgTable("groups", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 50 }).notNull(),
+  color: varchar("color").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Ideas table - stores canvas ideas with positioning and group reference
 export const ideas = pgTable("ideas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  groupId: varchar("group_id").references(() => groups.id, { onDelete: 'set null' }),
   title: varchar("title", { length: 100 }).notNull(),
   description: text("description"),
   color: varchar("color").notNull().default('#3B82F6'),
@@ -52,20 +62,11 @@ export const ideas = pgTable("ideas", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Categories table - for organizing ideas and todos
-export const categories = pgTable("categories", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  name: varchar("name", { length: 50 }).notNull(),
-  color: varchar("color").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-// TodoLists table - containers for tasks
+// TodoLists table - containers for tasks, created from groups
 export const todoLists = pgTable("todolists", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  categoryId: varchar("category_id").references(() => categories.id, { onDelete: 'set null' }),
+  groupId: varchar("group_id").notNull().references(() => groups.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 100 }).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -98,7 +99,16 @@ export const projects = pgTable("projects", {
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
   ideas: many(ideas),
-  categories: many(categories),
+  groups: many(groups),
+  todoLists: many(todoLists),
+}));
+
+export const groupsRelations = relations(groups, ({ one, many }) => ({
+  user: one(users, {
+    fields: [groups.userId],
+    references: [users.id],
+  }),
+  ideas: many(ideas),
   todoLists: many(todoLists),
 }));
 
@@ -107,15 +117,11 @@ export const ideasRelations = relations(ideas, ({ one, many }) => ({
     fields: [ideas.userId],
     references: [users.id],
   }),
-  tasks: many(tasks),
-}));
-
-export const categoriesRelations = relations(categories, ({ one, many }) => ({
-  user: one(users, {
-    fields: [categories.userId],
-    references: [users.id],
+  group: one(groups, {
+    fields: [ideas.groupId],
+    references: [groups.id],
   }),
-  todoLists: many(todoLists),
+  tasks: many(tasks),
 }));
 
 export const todoListsRelations = relations(todoLists, ({ one, many }) => ({
@@ -123,9 +129,9 @@ export const todoListsRelations = relations(todoLists, ({ one, many }) => ({
     fields: [todoLists.userId],
     references: [users.id],
   }),
-  category: one(categories, {
-    fields: [todoLists.categoryId],
-    references: [categories.id],
+  group: one(groups, {
+    fields: [todoLists.groupId],
+    references: [groups.id],
   }),
   tasks: many(tasks),
 }));
@@ -164,7 +170,7 @@ export const insertIdeaSchema = createInsertSchema(ideas).omit({
   updatedAt: true,
 });
 
-export const insertCategorySchema = createInsertSchema(categories).omit({
+export const insertGroupSchema = createInsertSchema(groups).omit({
   id: true,
   createdAt: true,
 });
@@ -192,8 +198,8 @@ export type User = typeof users.$inferSelect;
 export type InsertIdea = z.infer<typeof insertIdeaSchema>;
 export type Idea = typeof ideas.$inferSelect;
 
-export type InsertCategory = z.infer<typeof insertCategorySchema>;
-export type Category = typeof categories.$inferSelect;
+export type InsertGroup = z.infer<typeof insertGroupSchema>;
+export type Group = typeof groups.$inferSelect;
 
 export type InsertTodoList = z.infer<typeof insertTodoListSchema>;
 export type TodoList = typeof todoLists.$inferSelect;
