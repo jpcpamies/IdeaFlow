@@ -20,6 +20,7 @@ function Router() {
         <>
           <Route path="/" component={Dashboard} />
           <Route path="/canvas/:projectId" component={Canvas} />
+          <Route path="/canvas" component={Canvas} />
         </>
       )}
       <Route component={NotFound} />

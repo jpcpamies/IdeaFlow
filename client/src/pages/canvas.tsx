@@ -1,425 +1,448 @@
-import { useEffect, useState } from "react";
-import { useRoute } from "wouter";
-import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { 
-  ArrowLeft, 
-  MousePointer, 
-  Pen, 
-  Shapes, 
-  Type, 
-  StickyNote,
-  Wand2,
-  Share,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { 
+  Palette,
   Plus,
+  ZoomIn,
+  ZoomOut,
   ChevronRight,
-  Target
+  ChevronLeft,
+  User,
+  Lightbulb,
+  Target,
+  Bookmark,
+  Folder,
+  Settings
 } from "lucide-react";
-import { Link } from "wouter";
-import { isUnauthorizedError } from "@/lib/authUtils";
-import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { Project, Task } from "@shared/schema";
 
-type CanvasTool = 'select' | 'pen' | 'shapes' | 'text' | 'sticky';
+// Mock data for demonstration
+const mockIdeaCards = [
+  {
+    id: 1,
+    title: "Mobile App Redesign",
+    description: "Revamp the user interface for better accessibility and modern design trends",
+    color: "border-blue-400",
+    bgColor: "bg-blue-50",
+    position: { x: 120, y: 80 }
+  },
+  {
+    id: 2,
+    title: "AI Integration",
+    description: "Explore machine learning capabilities for personalized user experiences",
+    color: "border-purple-400",
+    bgColor: "bg-purple-50",
+    position: { x: 320, y: 200 }
+  },
+  {
+    id: 3,
+    title: "User Research Study",
+    description: "Conduct interviews with key stakeholders and analyze user behavior patterns",
+    color: "border-green-400",
+    bgColor: "bg-green-50",
+    position: { x: 480, y: 120 }
+  },
+  {
+    id: 4,
+    title: "Marketing Campaign",
+    description: "Launch targeted social media strategy to increase brand awareness",
+    color: "border-orange-400",
+    bgColor: "bg-orange-50",
+    position: { x: 240, y: 320 }
+  },
+  {
+    id: 5,
+    title: "Performance Optimization",
+    description: "Improve loading times and reduce server response latency",
+    color: "border-red-400",
+    bgColor: "bg-red-50",
+    position: { x: 520, y: 280 }
+  },
+  {
+    id: 6,
+    title: "Database Migration",
+    description: "Migrate legacy systems to modern cloud infrastructure",
+    color: "border-teal-400",
+    bgColor: "bg-teal-50",
+    position: { x: 360, y: 400 }
+  }
+];
+
+const mockCategories = [
+  { id: 1, name: "Product Ideas", count: 12, color: "bg-blue-100 text-blue-800" },
+  { id: 2, name: "Marketing", count: 8, color: "bg-green-100 text-green-800" },
+  { id: 3, name: "Engineering", count: 15, color: "bg-purple-100 text-purple-800" },
+  { id: 4, name: "Design", count: 6, color: "bg-orange-100 text-orange-800" },
+  { id: 5, name: "Research", count: 4, color: "bg-pink-100 text-pink-800" }
+];
+
+const mockTodoLists = [
+  {
+    id: 1,
+    title: "Project Planning",
+    tasks: [
+      { id: 1, text: "Define project scope and objectives", completed: true },
+      { id: 2, text: "Create detailed timeline and milestones", completed: false },
+      { id: 3, text: "Assign team members and responsibilities", completed: false }
+    ]
+  },
+  {
+    id: 2,
+    title: "Content Strategy",
+    tasks: [
+      { id: 4, text: "Audit existing content for gaps", completed: true },
+      { id: 5, text: "Develop content calendar for Q1", completed: true },
+      { id: 6, text: "Create brand voice guidelines", completed: false },
+      { id: 7, text: "Schedule social media campaigns", completed: false }
+    ]
+  }
+];
 
 export default function Canvas() {
-  const [match, params] = useRoute("/canvas/:projectId");
-  const { toast } = useToast();
-  const { isAuthenticated, isLoading } = useAuth();
-  const [selectedTool, setSelectedTool] = useState<CanvasTool>('select');
-  const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
+  const [zoomLevel, setZoomLevel] = useState(100);
+  const [isNewIdeaDialogOpen, setIsNewIdeaDialogOpen] = useState(false);
 
-  const projectId = params?.projectId;
-
-  // Redirect to home if not authenticated
-  useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      toast({
-        title: "Unauthorized",
-        description: "You are logged out. Logging in again...",
-        variant: "destructive",
-      });
-      setTimeout(() => {
-        window.location.href = "/api/login";
-      }, 500);
-      return;
-    }
-  }, [isAuthenticated, isLoading, toast]);
-
-  // Fetch project data
-  const { data: project, isLoading: projectLoading } = useQuery<Project>({
-    queryKey: ["/api/projects", projectId],
-    enabled: isAuthenticated && !!projectId,
-  });
-
-  // Fetch project tasks
-  const { data: tasks = [], isLoading: tasksLoading } = useQuery<Task[]>({
-    queryKey: ["/api/projects", projectId, "tasks"],
-    enabled: isAuthenticated && !!projectId,
-  });
-
-  // Toggle task completion mutation
-  const toggleTaskMutation = useMutation({
-    mutationFn: async ({ taskId, isCompleted }: { taskId: string; isCompleted: boolean }) => {
-      const response = await apiRequest('PATCH', `/api/tasks/${taskId}`, {
-        isCompleted,
-        status: isCompleted ? 'completed' : 'pending',
-      });
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId] });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to update task.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  // Create task mutation
-  const createTaskMutation = useMutation({
-    mutationFn: async (taskData: { title: string; description?: string; priority: string }) => {
-      const response = await apiRequest('POST', `/api/projects/${projectId}/tasks`, taskData);
-      return await response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/projects", projectId, "tasks"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      toast({
-        title: "Success",
-        description: "Task created successfully!",
-      });
-    },
-    onError: (error) => {
-      if (isUnauthorizedError(error)) {
-        toast({
-          title: "Unauthorized",
-          description: "You are logged out. Logging in again...",
-          variant: "destructive",
-        });
-        setTimeout(() => {
-          window.location.href = "/api/login";
-        }, 500);
-        return;
-      }
-      toast({
-        title: "Error",
-        description: "Failed to create task.",
-        variant: "destructive",
-      });
-    },
-  });
-
-  const handleToolSelect = (tool: CanvasTool) => {
-    setSelectedTool(tool);
+  const handleZoomIn = () => {
+    setZoomLevel(prev => Math.min(prev + 25, 200));
   };
 
-  const handleToggleTask = (taskId: string, isCompleted: boolean) => {
-    toggleTaskMutation.mutate({ taskId, isCompleted });
+  const handleZoomOut = () => {
+    setZoomLevel(prev => Math.max(prev - 25, 50));
   };
 
-  const handleConvertToTasks = () => {
-    // Create sample tasks based on canvas content
-    const sampleTasks = [
-      { title: "Conduct user research", description: "Interview target users to gather feedback", priority: "high" },
-      { title: "Create wireframes", description: "Design low-fidelity wireframes for key screens", priority: "medium" },
-      { title: "Build prototype", description: "Create interactive mockup for testing", priority: "medium" },
-    ];
-
-    sampleTasks.forEach(task => {
-      createTaskMutation.mutate(task);
-    });
+  const handleToggleTask = (taskId: number) => {
+    // Mock functionality - would update task completion status
+    console.log('Toggle task:', taskId);
   };
-
-  const handleAddCustomTask = () => {
-    createTaskMutation.mutate({
-      title: "New task",
-      description: "Add your task description here",
-      priority: "medium"
-    });
-  };
-
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100">High</Badge>;
-      case 'medium':
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">Medium</Badge>;
-      case 'low':
-        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100">Low</Badge>;
-      default:
-        return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100">Normal</Badge>;
-    }
-  };
-
-  const completedTasks = tasks.filter((task: Task) => task.isCompleted).length;
-  const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
-
-  if (isLoading || projectLoading) {
-    return (
-      <div className="h-screen bg-gray-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading canvas...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated || !project) {
-    return null;
-  }
 
   return (
-    <div className="h-screen bg-gray-100 overflow-hidden">
-      {/* Canvas Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 h-16 flex items-center justify-between px-6">
-        <div className="flex items-center space-x-4">
-          <Link href="/" className="text-muted-foreground hover:text-gray-900 transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-          </Link>
-          <h1 className="text-lg font-semibold text-gray-900" data-testid="text-project-name">
-            {project.name}
-          </h1>
-          <span className="text-sm text-muted-foreground">•</span>
-          <span className="text-sm text-muted-foreground">Saved automatically</span>
+    <div className="h-screen bg-gray-50 overflow-hidden flex flex-col">
+      {/* Header */}
+      <header className="bg-white shadow-sm border-b border-gray-200 h-16 flex items-center justify-between px-6 flex-shrink-0">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
+            <Palette className="text-white w-5 h-5" />
+          </div>
+          <h1 className="text-xl font-bold text-gray-900">Canvas Ideas</h1>
         </div>
         
-        {/* Canvas Tools */}
-        <div className="flex items-center space-x-1 bg-gray-100 rounded-lg p-1">
-          <Button
-            variant={selectedTool === 'select' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('select')}
-            data-testid="button-tool-select"
-          >
-            <MousePointer className="w-4 h-4" />
-          </Button>
-          <Button
-            variant={selectedTool === 'pen' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('pen')}
-            data-testid="button-tool-pen"
-          >
-            <Pen className="w-4 h-4" />
-          </Button>
-          <Button
-            variant={selectedTool === 'shapes' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('shapes')}
-            data-testid="button-tool-shapes"
-          >
-            <Shapes className="w-4 h-4" />
-          </Button>
-          <Button
-            variant={selectedTool === 'text' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('text')}
-            data-testid="button-tool-text"
-          >
-            <Type className="w-4 h-4" />
-          </Button>
-          <Button
-            variant={selectedTool === 'sticky' ? 'default' : 'ghost'}
-            size="sm"
-            onClick={() => handleToolSelect('sticky')}
-            data-testid="button-tool-sticky"
-          >
-            <StickyNote className="w-4 h-4" />
-          </Button>
-        </div>
-
         <div className="flex items-center space-x-4">
-          <Button 
-            onClick={handleConvertToTasks}
-            disabled={createTaskMutation.isPending}
-            data-testid="button-convert-to-tasks"
-          >
-            <Wand2 className="mr-2 w-4 h-4" />
-            Convert to Tasks
-          </Button>
-          <Button variant="outline" data-testid="button-share-project">
-            <Share className="mr-2 w-4 h-4" />
-            Share
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+              <User className="w-4 h-4 text-gray-600" />
+            </div>
+            <span className="text-sm text-gray-700">John Doe</span>
+          </div>
+          <Button variant="ghost" size="sm">
+            <Settings className="w-4 h-4" />
           </Button>
         </div>
       </header>
 
-      <div className="flex h-full">
-        {/* Main Canvas Area */}
-        <main className="flex-1 relative bg-white">
-          <div className="w-full h-full relative bg-gradient-to-br from-gray-50 to-gray-100">
-            {/* Canvas content placeholder - In a real implementation, this would be a proper canvas */}
-            <div className="absolute inset-0 p-8">
-              <div className="text-center pt-32">
-                <Target className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-xl font-medium text-gray-900 mb-2">Canvas Ready</h3>
-                <p className="text-muted-foreground mb-6">
-                  Start sketching your ideas, add sticky notes, or create shapes.
-                  <br />
-                  Selected tool: <span className="font-medium capitalize">{selectedTool}</span>
-                </p>
-                <div className="space-y-4 max-w-md mx-auto">
-                  <div className="bg-yellow-200 p-4 rounded-lg shadow-md rotate-3 cursor-move">
-                    <p className="text-sm font-medium">User Research</p>
-                    <p className="text-xs text-gray-600">Interview potential users</p>
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Sidebar - Create Ideas */}
+        <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+          <div className="p-4 border-b border-gray-200">
+            <Dialog open={isNewIdeaDialogOpen} onOpenChange={setIsNewIdeaDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="w-full bg-primary text-white hover:bg-primary/90" data-testid="button-new-idea">
+                  <Plus className="mr-2 w-4 h-4" />
+                  New Idea
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Create New Idea</DialogTitle>
+                  <DialogDescription>
+                    Add your creative ideas to the canvas
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <label htmlFor="idea-title" className="text-sm font-medium">
+                      Title
+                    </label>
+                    <Input
+                      id="idea-title"
+                      placeholder="Enter your idea title..."
+                      data-testid="input-idea-title"
+                    />
                   </div>
-                  <div className="bg-blue-200 p-4 rounded-lg shadow-md -rotate-2 cursor-move">
-                    <p className="text-sm font-medium">Design Wireframes</p>
-                    <p className="text-xs text-gray-600">Create low-fidelity mockups</p>
+                  <div className="grid gap-2">
+                    <label htmlFor="idea-description" className="text-sm font-medium">
+                      Description
+                    </label>
+                    <Textarea
+                      id="idea-description"
+                      placeholder="Describe your idea in detail..."
+                      className="resize-none"
+                      data-testid="textarea-idea-description"
+                    />
                   </div>
-                  <div className="bg-green-200 p-4 rounded-lg shadow-md rotate-1 cursor-move">
-                    <p className="text-sm font-medium">Build Prototype</p>
-                    <p className="text-xs text-gray-600">Interactive demo version</p>
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Category</label>
+                    <select className="w-full p-2 border rounded-md" data-testid="select-idea-category">
+                      <option>Product Ideas</option>
+                      <option>Marketing</option>
+                      <option>Engineering</option>
+                      <option>Design</option>
+                      <option>Research</option>
+                    </select>
                   </div>
                 </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setIsNewIdeaDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => setIsNewIdeaDialogOpen(false)} data-testid="button-save-idea">
+                    Save Idea
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Categories</h3>
+              <div className="space-y-2">
+                {mockCategories.map((category) => (
+                  <div 
+                    key={category.id} 
+                    className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
+                    data-testid={`category-${category.id}`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <Folder className="w-4 h-4 text-gray-400" />
+                      <span className="text-sm text-gray-700">{category.name}</span>
+                    </div>
+                    <Badge className={`text-xs ${category.color}`}>
+                      {category.count}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Quick Actions</h3>
+              <div className="space-y-2">
+                <Button variant="ghost" className="w-full justify-start text-sm" data-testid="button-templates">
+                  <Bookmark className="mr-2 w-4 h-4" />
+                  Templates
+                </Button>
+                <Button variant="ghost" className="w-full justify-start text-sm" data-testid="button-recent-ideas">
+                  <Lightbulb className="mr-2 w-4 h-4" />
+                  Recent Ideas
+                </Button>
               </div>
             </div>
           </div>
 
-          {/* Floating Action Button */}
-          <Button
-            className="absolute bottom-8 right-8 w-14 h-14 rounded-full shadow-lg hover:scale-105"
-            data-testid="button-add-element"
+          <div className="p-4 border-t border-gray-200">
+            <div className="text-xs text-gray-500 text-center">
+              {mockIdeaCards.length} ideas • {mockTodoLists.reduce((acc, list) => acc + list.tasks.length, 0)} tasks
+            </div>
+          </div>
+        </aside>
+
+        {/* Center Canvas Area */}
+        <main className="flex-1 relative bg-white overflow-hidden">
+          {/* Grid Background */}
+          <div 
+            className="absolute inset-0 opacity-20"
+            style={{
+              backgroundImage: `
+                linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)
+              `,
+              backgroundSize: '20px 20px'
+            }}
+          />
+
+          {/* Zoom Controls */}
+          <div className="absolute top-4 right-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleZoomOut}
+              disabled={zoomLevel <= 50}
+              data-testid="button-zoom-out"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </Button>
+            <span className="px-2 text-xs text-gray-600 min-w-[3rem] text-center">
+              {zoomLevel}%
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleZoomIn}
+              disabled={zoomLevel >= 200}
+              data-testid="button-zoom-in"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Canvas Content */}
+          <div 
+            className="absolute inset-0 p-8 overflow-auto"
+            style={{ 
+              transform: `scale(${zoomLevel / 100})`,
+              transformOrigin: 'top left',
+              width: `${10000 / (zoomLevel / 100)}px`,
+              height: `${10000 / (zoomLevel / 100)}px`
+            }}
           >
-            <Plus className="w-6 h-6" />
-          </Button>
+            {/* Mock Idea Cards */}
+            {mockIdeaCards.map((idea) => (
+              <Card 
+                key={idea.id}
+                className={`absolute w-64 ${idea.bgColor} border-2 ${idea.color} shadow-md hover:shadow-lg transition-all cursor-move hover:scale-105`}
+                style={{ 
+                  left: idea.position.x, 
+                  top: idea.position.y 
+                }}
+                data-testid={`idea-card-${idea.id}`}
+              >
+                <CardContent className="p-4">
+                  <h3 className="font-semibold text-gray-900 mb-2 text-sm">
+                    {idea.title}
+                  </h3>
+                  <p className="text-xs text-gray-600 leading-relaxed">
+                    {idea.description}
+                  </p>
+                  <div className="mt-3 flex items-center justify-between">
+                    <Badge variant="outline" className="text-xs">
+                      Idea
+                    </Badge>
+                    <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Canvas Instructions */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+              <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
+                <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Infinite Canvas</h3>
+                <p className="text-sm text-gray-600">
+                  Drag ideas around • Zoom to explore • Click cards to edit
+                </p>
+              </div>
+            </div>
+          </div>
         </main>
 
-        {/* Task Panel */}
+        {/* Right Sidebar - To-Do Lists */}
         <aside className={`w-80 bg-white border-l border-gray-200 flex flex-col transition-transform duration-300 ${
-          isPanelOpen ? 'translate-x-0' : 'translate-x-80'
+          isRightSidebarOpen ? 'translate-x-0' : 'translate-x-80'
         }`}>
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Generated Tasks</h2>
+              <h2 className="font-semibold text-gray-900">To-Do Lists</h2>
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setIsPanelOpen(!isPanelOpen)}
-                data-testid="button-toggle-panel"
+                onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                data-testid="button-toggle-sidebar"
               >
-                <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${
-                  isPanelOpen ? 'rotate-180' : ''
-                }`} />
+                {isRightSidebarOpen ? (
+                  <ChevronRight className="w-4 h-4" />
+                ) : (
+                  <ChevronLeft className="w-4 h-4" />
+                )}
               </Button>
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {tasksLoading ? (
-              <div className="text-center py-8">
-                <div className="w-6 h-6 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-muted-foreground text-sm">Loading tasks...</p>
-              </div>
-            ) : tasks.length === 0 ? (
-              <div className="text-center py-8">
-                <Target className="w-8 h-8 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground text-sm mb-4">No tasks yet</p>
+          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            {mockTodoLists.map((list) => (
+              <div key={list.id} className="bg-gray-50 rounded-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-medium text-gray-900 text-sm">{list.title}</h3>
+                  <Badge variant="outline" className="text-xs">
+                    {list.tasks.filter(t => !t.completed).length} left
+                  </Badge>
+                </div>
+                
+                <div className="space-y-2">
+                  {list.tasks.map((task) => (
+                    <div 
+                      key={task.id} 
+                      className="flex items-start space-x-2 group"
+                      data-testid={`task-${task.id}`}
+                    >
+                      <Checkbox
+                        checked={task.completed}
+                        onCheckedChange={() => handleToggleTask(task.id)}
+                        className="mt-0.5"
+                        data-testid={`checkbox-task-${task.id}`}
+                      />
+                      <span 
+                        className={`text-sm flex-1 ${
+                          task.completed 
+                            ? 'line-through text-gray-400' 
+                            : 'text-gray-700'
+                        }`}
+                      >
+                        {task.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
                 <Button
+                  variant="ghost"
                   size="sm"
-                  onClick={handleConvertToTasks}
-                  disabled={createTaskMutation.isPending}
-                  data-testid="button-generate-tasks"
+                  className="w-full mt-3 border-dashed border-2 border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600"
+                  data-testid={`button-add-task-${list.id}`}
                 >
-                  <Wand2 className="mr-2 w-4 h-4" />
-                  Generate Tasks
+                  <Plus className="mr-1 w-3 h-3" />
+                  Add task
                 </Button>
               </div>
-            ) : (
-              <div className="space-y-3">
-                {tasks.map((task: Task) => (
-                  <Card key={task.id} className="bg-gray-50 hover:bg-gray-100 transition-colors border-0">
-                    <CardContent className="p-3">
-                      <div className="flex items-start space-x-3">
-                        <Checkbox
-                          checked={task.isCompleted || false}
-                          onCheckedChange={(checked) => handleToggleTask(task.id, !!checked)}
-                          className="mt-1"
-                          data-testid={`checkbox-task-${task.id}`}
-                        />
-                        <div className="flex-1">
-                          <p className={`text-sm font-medium text-gray-900 ${
-                            task.isCompleted ? 'line-through opacity-60' : ''
-                          }`} data-testid={`text-task-title-${task.id}`}>
-                            {task.title}
-                          </p>
-                          {task.description && (
-                            <p className={`text-xs text-muted-foreground ${
-                              task.isCompleted ? 'opacity-60' : ''
-                            }`} data-testid={`text-task-description-${task.id}`}>
-                              {task.description}
-                            </p>
-                          )}
-                          <div className="flex items-center space-x-2 mt-2">
-                            {task.isCompleted ? (
-                              <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
-                                Completed
-                              </Badge>
-                            ) : (
-                              getPriorityBadge(task.priority)
-                            )}
-                            {task.estimatedTime && (
-                              <span className="text-xs text-muted-foreground">
-                                {task.estimatedTime}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            <Button
-              variant="outline"
-              className="w-full mt-4 border-dashed"
-              onClick={handleAddCustomTask}
-              disabled={createTaskMutation.isPending}
-              data-testid="button-add-custom-task"
-            >
-              <Plus className="mr-2 w-4 h-4" />
-              Add Custom Task
-            </Button>
+            ))}
           </div>
 
           <div className="p-4 border-t border-gray-200">
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Progress</span>
-              <span className="font-medium text-gray-900" data-testid="text-progress-percentage">
-                {progress}%
-              </span>
-            </div>
-            <div className="mt-2 bg-gray-200 rounded-full h-2">
-              <div 
-                className="bg-primary h-2 rounded-full transition-all duration-300" 
-                style={{ width: `${progress}%` }}
-              ></div>
-            </div>
+            <Button 
+              variant="outline" 
+              className="w-full border-dashed"
+              data-testid="button-new-list"
+            >
+              <Plus className="mr-2 w-4 h-4" />
+              New List
+            </Button>
           </div>
         </aside>
+
+        {/* Sidebar Toggle Button (when collapsed) */}
+        {!isRightSidebarOpen && (
+          <Button
+            className="fixed right-4 top-1/2 transform -translate-y-1/2 z-20 h-12 w-8 rounded-l-lg rounded-r-none bg-white border border-gray-200 shadow-md hover:bg-gray-50"
+            onClick={() => setIsRightSidebarOpen(true)}
+            data-testid="button-expand-sidebar"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </Button>
+        )}
       </div>
     </div>
   );
