@@ -1737,8 +1737,8 @@ export default function Canvas() {
                     : ''
                 }`}
                 style={{ 
-                  left: idea.x, 
-                  top: idea.y,
+                  left: idea.canvasX, 
+                  top: idea.canvasY,
                   borderColor: idea.color || '#3B82F6',
                   backgroundColor: `${idea.color || '#3B82F6'}10`,
                 }}
@@ -1774,7 +1774,8 @@ export default function Canvas() {
                         <DropdownMenuItem 
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleDeleteConfirm(idea);
+                            setIdeaToDelete(idea);
+                            setIsDeleteConfirmOpen(true);
                           }}
                           className="text-red-600 focus:text-red-600"
                         >
@@ -1800,10 +1801,10 @@ export default function Canvas() {
               const groupIdeas = ideas.filter(idea => idea.groupId === group.id);
               if (groupIdeas.length === 0) return null;
 
-              const minX = Math.min(...groupIdeas.map(idea => idea.x)) - 20;
-              const minY = Math.min(...groupIdeas.map(idea => idea.y)) - 60;
-              const maxX = Math.max(...groupIdeas.map(idea => idea.x + 240)) + 20;
-              const maxY = Math.max(...groupIdeas.map(idea => idea.y + 120)) + 20;
+              const minX = Math.min(...groupIdeas.map(idea => idea.canvasX)) - 20;
+              const minY = Math.min(...groupIdeas.map(idea => idea.canvasY)) - 60;
+              const maxX = Math.max(...groupIdeas.map(idea => idea.canvasX + 240)) + 20;
+              const maxY = Math.max(...groupIdeas.map(idea => idea.canvasY + 120)) + 20;
 
               return (
                 <div
@@ -1878,109 +1879,6 @@ export default function Canvas() {
           </div>
         </main>
 
-        {/* Right Sidebar - Task Management */}
-        <aside 
-          className={`${
-            isRightSidebarOpen ? 'w-80' : 'w-12'
-          } bg-white border-l border-gray-200 flex flex-col transition-all duration-300 z-10`}
-          style={{
-            marginLeft: isRightSidebarOpen ? '0' : '0'
-          }}
-        >
-          <div className="p-4 border-b border-gray-200">
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-              className="w-full justify-between"
-              data-testid="button-toggle-sidebar"
-            >
-              <span className="flex items-center">
-                <ClipboardList className="mr-2 w-4 h-4" />
-                Tasks
-              </span>
-              {isRightSidebarOpen && <ChevronRight className="w-4 h-4" />}
-            </Button>
-          </div>
-
-          {isRightSidebarOpen && (
-            <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              {todoLists.length === 0 ? (
-                <div className="text-center text-gray-500 text-sm py-4">
-                  <p>No todo lists yet.</p>
-                  <p className="mt-1">Create a group with ideas, then use "Create TodoList" from the group menu.</p>
-                </div>
-              ) : (
-                todoLists.map((todoList: TodoList) => {
-                  const todoListTasks = allTasks.filter((task: Task) => task.todoListId === todoList.id);
-                  const completedCount = todoListTasks.filter((task: Task) => task.completed).length;
-                  const totalCount = todoListTasks.length;
-                  const pendingCount = totalCount - completedCount;
-                  
-                  return (
-                    <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
-                        {pendingCount > 0 && (
-                          <Badge variant="outline" className="text-xs">
-                            {pendingCount} left
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      <div className="space-y-2">
-                        {todoListTasks.map((task: Task) => (
-                          <div 
-                            key={task.id} 
-                            className="flex items-start space-x-2 group"
-                            data-testid={`task-${task.id}`}
-                          >
-                            <Checkbox
-                              checked={task.completed}
-                              onCheckedChange={() => handleToggleTask(task.id, task.completed)}
-                              className="mt-0.5"
-                              data-testid={`checkbox-task-${task.id}`}
-                            />
-                            <span 
-                              className={`text-sm flex-1 ${
-                                task.completed 
-                                  ? 'line-through text-gray-400' 
-                                  : 'text-gray-700'
-                              }`}
-                            >
-                              {task.title}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                      
-                      {totalCount > 0 && (
-                        <div className="mt-3 pt-3 border-t border-gray-100">
-                          <div className="text-xs text-gray-500">
-                            {completedCount} of {totalCount} completed
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-        </aside>
-
-        {/* Sidebar Toggle Button (when collapsed) */}
-        {!isRightSidebarOpen && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="absolute top-20 right-4 z-10 bg-white shadow-md"
-            onClick={() => setIsRightSidebarOpen(true)}
-            data-testid="button-show-sidebar"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-        )}
       </div>
 
       {/* Group Actions Modal */}
