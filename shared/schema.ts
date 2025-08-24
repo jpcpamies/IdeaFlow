@@ -43,17 +43,19 @@ export const users = pgTable("users", {
 export const groups = pgTable("groups", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 50 }).notNull(),
   color: varchar("color").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
-  userNameUnique: index("groups_user_id_name_unique").on(table.userId, table.name),
+  userProjectNameUnique: index("groups_user_project_name_unique").on(table.userId, table.projectId, table.name),
 }));
 
 // Ideas table - stores canvas ideas with positioning and group reference
 export const ideas = pgTable("ideas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
   groupId: varchar("group_id").references(() => groups.id, { onDelete: 'set null' }),
   title: varchar("title", { length: 100 }).notNull(),
   description: text("description"),
@@ -68,6 +70,7 @@ export const ideas = pgTable("ideas", {
 export const todoLists = pgTable("todolists", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  projectId: varchar("project_id").notNull().references(() => projects.id, { onDelete: 'cascade' }),
   groupId: varchar("group_id").notNull().references(() => groups.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 100 }).notNull(),
   archived: boolean("archived").default(false),
@@ -110,6 +113,16 @@ export const projects = pgTable("projects", {
 });
 
 // Relations
+export const projectsRelations = relations(projects, ({ one, many }) => ({
+  user: one(users, {
+    fields: [projects.userId],
+    references: [users.id],
+  }),
+  ideas: many(ideas),
+  groups: many(groups),
+  todoLists: many(todoLists),
+}));
+
 export const usersRelations = relations(users, ({ many }) => ({
   projects: many(projects),
   ideas: many(ideas),
@@ -122,6 +135,10 @@ export const groupsRelations = relations(groups, ({ one, many }) => ({
     fields: [groups.userId],
     references: [users.id],
   }),
+  project: one(projects, {
+    fields: [groups.projectId],
+    references: [projects.id],
+  }),
   ideas: many(ideas),
   todoLists: many(todoLists),
 }));
@@ -130,6 +147,10 @@ export const ideasRelations = relations(ideas, ({ one, many }) => ({
   user: one(users, {
     fields: [ideas.userId],
     references: [users.id],
+  }),
+  project: one(projects, {
+    fields: [ideas.projectId],
+    references: [projects.id],
   }),
   group: one(groups, {
     fields: [ideas.groupId],
@@ -142,6 +163,10 @@ export const todoListsRelations = relations(todoLists, ({ one, many }) => ({
   user: one(users, {
     fields: [todoLists.userId],
     references: [users.id],
+  }),
+  project: one(projects, {
+    fields: [todoLists.projectId],
+    references: [projects.id],
   }),
   group: one(groups, {
     fields: [todoLists.groupId],
@@ -174,13 +199,6 @@ export const tasksRelations = relations(tasks, ({ one }) => ({
   }),
 }));
 
-// Legacy project relations
-export const projectsRelations = relations(projects, ({ one }) => ({
-  user: one(users, {
-    fields: [projects.userId],
-    references: [users.id],
-  }),
-}));
 
 // Insert schemas
 export const insertUserSchema = createInsertSchema(users).pick({

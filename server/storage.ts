@@ -47,6 +47,7 @@ export interface IStorage {
   
   // Idea operations
   getUserIdeas(userId: string): Promise<Idea[]>;
+  getProjectIdeas(userId: string, projectId: string): Promise<Idea[]>;
   getIdea(id: string): Promise<Idea | undefined>;
   createIdea(idea: InsertIdea): Promise<Idea>;
   updateIdea(id: string, updates: Partial<InsertIdea>): Promise<Idea>;
@@ -54,6 +55,7 @@ export interface IStorage {
   
   // Group operations
   getUserGroups(userId: string): Promise<Group[]>;
+  getProjectGroups(userId: string, projectId: string): Promise<Group[]>;
   getGroup(id: string): Promise<Group | undefined>;
   createGroup(group: InsertGroup): Promise<Group>;
   updateGroup(id: string, updates: Partial<InsertGroup>): Promise<Group>;
@@ -62,6 +64,7 @@ export interface IStorage {
   
   // TodoList operations
   getUserTodoLists(userId: string): Promise<TodoList[]>;
+  getProjectTodoLists(userId: string, projectId: string): Promise<TodoList[]>;
   getTodoList(id: string): Promise<TodoList | undefined>;
   createTodoList(todoList: InsertTodoList): Promise<TodoList>;
   updateTodoList(id: string, updates: Partial<InsertTodoList>): Promise<TodoList>;
@@ -227,6 +230,14 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(ideas.createdAt));
   }
 
+  async getProjectIdeas(userId: string, projectId: string): Promise<Idea[]> {
+    return await db
+      .select()
+      .from(ideas)
+      .where(and(eq(ideas.userId, userId), eq(ideas.projectId, projectId)))
+      .orderBy(desc(ideas.createdAt));
+  }
+
   async getIdea(id: string): Promise<Idea | undefined> {
     const [idea] = await db.select().from(ideas).where(eq(ideas.id, id));
     return idea;
@@ -259,6 +270,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(groups)
       .where(eq(groups.userId, userId))
+      .orderBy(groups.name);
+  }
+
+  async getProjectGroups(userId: string, projectId: string): Promise<Group[]> {
+    return await db
+      .select()
+      .from(groups)
+      .where(and(eq(groups.userId, userId), eq(groups.projectId, projectId)))
       .orderBy(groups.name);
   }
 
@@ -301,6 +320,14 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(todoLists)
       .where(eq(todoLists.userId, userId))
+      .orderBy(desc(todoLists.createdAt));
+  }
+
+  async getProjectTodoLists(userId: string, projectId: string): Promise<TodoList[]> {
+    return await db
+      .select()
+      .from(todoLists)
+      .where(and(eq(todoLists.userId, userId), eq(todoLists.projectId, projectId)))
       .orderBy(desc(todoLists.createdAt));
   }
 
