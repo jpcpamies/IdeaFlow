@@ -51,6 +51,8 @@ interface DragState {
   startPos: { x: number, y: number };
   offset: { x: number, y: number };
   initialPositions: Record<string, { x: number, y: number }>;
+  currentPositions: Record<string, { x: number, y: number }>;
+  dragElements: Record<string, HTMLElement>;
 }
 
 // Mock todo lists for now (will be replaced with real data later)
@@ -99,8 +101,14 @@ export default function Canvas() {
     dragCardId: null,
     startPos: { x: 0, y: 0 },
     offset: { x: 0, y: 0 },
-    initialPositions: {}
+    initialPositions: {},
+    currentPositions: {},
+    dragElements: {}
   });
+
+  // Animation frame ref for smooth dragging
+  const animationFrameRef = useRef<number | null>(null);
+  const dragStateRef = useRef<DragState>(dragState);
 
   // API Queries
   const { data: ideas = [], isLoading: ideasLoading } = useQuery({
@@ -111,10 +119,10 @@ export default function Canvas() {
     queryKey: ['/api/groups'],
   });
 
-  // Debug logging
-  console.log('Ideas data:', ideas);
-  console.log('Groups data:', groups);
-  console.log('Ideas loading:', ideasLoading);
+  // Debug logging (remove in production)
+  // console.log('Ideas data:', ideas);
+  // console.log('Groups data:', groups);
+  // console.log('Ideas loading:', ideasLoading);
 
   // Mutations
   const createIdeaMutation = useMutation({
@@ -261,6 +269,11 @@ export default function Canvas() {
     }
   };
 
+  // Update drag state ref whenever state changes
+  useEffect(() => {
+    dragStateRef.current = dragState;
+  }, [dragState]);
+
   // Drag and Drop functions
   const handleMouseDown = (event: React.MouseEvent, cardId: string) => {
     // Only start drag on left mouse button
@@ -290,89 +303,133 @@ export default function Canvas() {
       setSelectedCards([cardId]);
     }
     
-    // Get initial positions of all cards that will be dragged
+    // Get initial positions and elements of all cards that will be dragged
     const cardsToMove = selectedCards.includes(cardId) ? selectedCards : [cardId];
     const initialPositions: Record<string, { x: number, y: number }> = {};
+    const currentPositions: Record<string, { x: number, y: number }> = {};
+    const dragElements: Record<string, HTMLElement> = {};
     
     cardsToMove.forEach(id => {
       const idea = ideas.find((i: Idea) => i.id === id);
-      if (idea) {
+      const element = document.querySelector(`[data-card-id="${id}"]`) as HTMLElement;
+      if (idea && element) {
         initialPositions[id] = { x: idea.canvasX, y: idea.canvasY };
+        currentPositions[id] = { x: idea.canvasX, y: idea.canvasY };
+        dragElements[id] = element;
+        
+        // Apply initial drag styling with hardware acceleration
+        element.style.transition = 'none';
+        element.style.willChange = 'transform';
+        element.style.zIndex = '1000';
+        element.style.cursor = 'grabbing';
+        element.style.userSelect = 'none';
+        element.style.pointerEvents = 'none';
+        element.style.transform = 'rotate(2deg) scale(1.02)';
+        element.style.filter = 'drop-shadow(0 20px 25px rgba(0, 0, 0, 0.25))';
       }
     });
+    
+    // Disable body selection and set cursor
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'grabbing';
     
     setDragState({
       isDragging: true,
       dragCardId: cardId,
       startPos: { x: mouseX, y: mouseY },
       offset: { x: offsetX, y: offsetY },
-      initialPositions
+      initialPositions,
+      currentPositions,
+      dragElements
+    });
+  };
+
+  const updateDragPositions = (mouseX: number, mouseY: number) => {
+    const currentDragState = dragStateRef.current;
+    if (!currentDragState.isDragging) return;
+    
+    const deltaX = mouseX - currentDragState.startPos.x;
+    const deltaY = mouseY - currentDragState.startPos.y;
+    
+    // Update positions using CSS transforms for better performance
+    Object.entries(currentDragState.dragElements).forEach(([cardId, element]) => {
+      const initialPos = currentDragState.initialPositions[cardId];
+      if (initialPos && element) {
+        const newX = Math.max(0, initialPos.x + deltaX);
+        const newY = Math.max(0, initialPos.y + deltaY);
+        
+        // Update current positions for final save
+        currentDragState.currentPositions[cardId] = { x: newX, y: newY };
+        
+        // Use transform for smooth hardware-accelerated movement
+        element.style.transform = `translate(${deltaX}px, ${deltaY}px) rotate(2deg) scale(1.02)`;
+      }
     });
   };
 
   const handleMouseMove = (event: MouseEvent) => {
-    if (!dragState.isDragging || !canvasRef.current) return;
+    if (!dragStateRef.current.isDragging || !canvasRef.current) return;
+    
+    event.preventDefault();
     
     const rect = canvasRef.current.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) / (zoomLevel / 100);
     const mouseY = (event.clientY - rect.top) / (zoomLevel / 100);
     
-    const deltaX = mouseX - dragState.startPos.x;
-    const deltaY = mouseY - dragState.startPos.y;
+    // Cancel previous animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
     
-    // Update positions of all selected cards
-    const cardsToMove = selectedCards.includes(dragState.dragCardId!) 
-      ? selectedCards 
-      : [dragState.dragCardId!];
-    
-    cardsToMove.forEach(cardId => {
-      const initialPos = dragState.initialPositions[cardId];
-      if (initialPos) {
-        const newX = Math.max(0, initialPos.x + deltaX);
-        const newY = Math.max(0, initialPos.y + deltaY);
-        
-        // Update the card position immediately in the UI
-        const cardElement = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement;
-        if (cardElement) {
-          cardElement.style.left = `${newX}px`;
-          cardElement.style.top = `${newY}px`;
-          cardElement.style.cursor = 'grabbing';
-          cardElement.style.userSelect = 'none';
-          cardElement.style.pointerEvents = 'none';
-          cardElement.style.zIndex = '1000';
-          cardElement.style.transform = 'rotate(2deg)';
-          cardElement.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)';
-        }
-      }
+    // Schedule update for next frame for smooth animation
+    animationFrameRef.current = requestAnimationFrame(() => {
+      updateDragPositions(mouseX, mouseY);
     });
   };
 
   const handleMouseUp = () => {
-    if (!dragState.isDragging) return;
+    const currentDragState = dragStateRef.current;
+    if (!currentDragState.isDragging) return;
     
-    const cardsToMove = selectedCards.includes(dragState.dragCardId!) 
-      ? selectedCards 
-      : [dragState.dragCardId!];
+    // Cancel any pending animation frame
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     
-    // Save final positions to database
-    cardsToMove.forEach(cardId => {
-      const cardElement = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement;
-      if (cardElement) {
-        const finalX = parseInt(cardElement.style.left);
-        const finalY = parseInt(cardElement.style.top);
+    // Restore body styles
+    document.body.style.userSelect = '';
+    document.body.style.cursor = '';
+    
+    // Reset visual effects and save final positions
+    Object.entries(currentDragState.dragElements).forEach(([cardId, element]) => {
+      const finalPos = currentDragState.currentPositions[cardId];
+      if (element && finalPos) {
+        // Reset styles with smooth transition
+        element.style.transition = 'all 0.2s ease-out';
+        element.style.willChange = 'auto';
+        element.style.zIndex = '';
+        element.style.cursor = 'pointer';
+        element.style.userSelect = '';
+        element.style.pointerEvents = '';
+        element.style.transform = '';
+        element.style.filter = '';
         
-        // Reset visual effects
-        cardElement.style.cursor = 'pointer';
-        cardElement.style.userSelect = '';
-        cardElement.style.pointerEvents = '';
-        cardElement.style.zIndex = '';
-        cardElement.style.transform = '';
-        cardElement.style.boxShadow = '';
+        // Update actual position
+        element.style.left = `${finalPos.x}px`;
+        element.style.top = `${finalPos.y}px`;
         
-        // Update database
+        // Clean up transition after animation
+        setTimeout(() => {
+          if (element) {
+            element.style.transition = '';
+          }
+        }, 200);
+        
+        // Save to database (only once per card)
         updateIdeaMutation.mutate({
           id: cardId,
-          updates: { canvasX: finalX, canvasY: finalY }
+          updates: { canvasX: finalPos.x, canvasY: finalPos.y }
         });
       }
     });
@@ -382,24 +439,80 @@ export default function Canvas() {
       dragCardId: null,
       startPos: { x: 0, y: 0 },
       offset: { x: 0, y: 0 },
-      initialPositions: {}
+      initialPositions: {},
+      currentPositions: {},
+      dragElements: {}
     });
   };
 
-  // Mouse event listeners
+  // Mouse event listeners with passive options for better performance
   useEffect(() => {
     if (dragState.isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'grabbing';
+      document.addEventListener('mousemove', handleMouseMove, { passive: false });
+      document.addEventListener('mouseup', handleMouseUp, { passive: true });
       
+      // Cleanup function
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
+        
+        // Cancel any pending animation frame
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+          animationFrameRef.current = null;
+        }
+        
+        // Restore body styles
+        document.body.style.userSelect = '';
         document.body.style.cursor = '';
       };
     }
-  }, [dragState.isDragging, dragState.startPos, dragState.initialPositions, selectedCards, zoomLevel]);
+  }, [dragState.isDragging, zoomLevel]);
+
+  // Touch event support for mobile
+  const handleTouchStart = (event: React.TouchEvent, cardId: string) => {
+    if (event.touches.length !== 1) return;
+    
+    const touch = event.touches[0];
+    const mouseEvent = new MouseEvent('mousedown', {
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      button: 0,
+      bubbles: true
+    });
+    
+    handleMouseDown(mouseEvent as any, cardId);
+  };
+
+  useEffect(() => {
+    if (dragState.isDragging) {
+      const handleTouchMove = (event: TouchEvent) => {
+        if (event.touches.length !== 1) return;
+        event.preventDefault();
+        
+        const touch = event.touches[0];
+        const mouseEvent = new MouseEvent('mousemove', {
+          clientX: touch.clientX,
+          clientY: touch.clientY,
+          bubbles: true
+        });
+        
+        handleMouseMove(mouseEvent);
+      };
+
+      const handleTouchEnd = () => {
+        handleMouseUp();
+      };
+
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
+      document.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+      return () => {
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
+      };
+    }
+  }, [dragState.isDragging]);
 
   // Task toggle function
   const handleToggleTask = (taskId: number) => {
@@ -644,6 +757,7 @@ export default function Canvas() {
                   }}
                   onClick={(e) => handleCardClick(idea.id, e)}
                   onMouseDown={(e) => handleMouseDown(e, idea.id)}
+                  onTouchStart={(e) => handleTouchStart(e, idea.id)}
                   data-testid={`idea-card-${idea.id}`}
                 >
                   <CardContent className="p-4 relative">
