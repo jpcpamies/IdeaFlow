@@ -202,6 +202,7 @@ export default function Canvas() {
   const fitToView = () => {
     console.log('=== FIT TO CANVAS OPERATION ===');
     console.log('Available ideas to analyze:', filteredIdeas.length);
+    console.log('Right sidebar open:', isRightSidebarOpen);
     
     if (filteredIdeas.length === 0) {
       console.log('No ideas to fit - operation cancelled');
@@ -218,9 +219,11 @@ export default function Canvas() {
     const bounds = calculateBoundingBox(filteredIdeas);
     
     // Get ACTUAL viewport dimensions (visible canvas area)
+    // Account for sidebar: when sidebar is open, canvas has less width
     const viewportWidth = canvasContainer.clientWidth;
     const viewportHeight = canvasContainer.clientHeight;
-    console.log('Actual viewport dimensions:', viewportWidth, 'x', viewportHeight);
+    console.log('Canvas container dimensions:', viewportWidth, 'x', viewportHeight);
+    console.log('Sidebar affects available width:', isRightSidebarOpen ? 'YES' : 'NO');
     
     // Calculate content dimensions
     const contentWidth = bounds.maxX - bounds.minX;
@@ -247,8 +250,21 @@ export default function Canvas() {
     const finalZoom = Math.max(15, Math.min(200, optimalZoomPercent));
     console.log('Final zoom after bounds:', finalZoom.toFixed(1), '%');
     
-    // Apply the zoom
+    // Reset pan to center the content
+    const centerX = -(bounds.minX - paddingMargin);
+    const centerY = -(bounds.minY - paddingMargin);
+    
+    // Apply the zoom and reset pan
     setZoomLevel(finalZoom);
+    setPanState({
+      x: centerX,
+      y: centerY,
+      isPanning: false,
+      startPan: { x: 0, y: 0 },
+      lastPan: { x: centerX, y: centerY }
+    });
+    
+    console.log('Pan reset to center content:', centerX, centerY);
     console.log('=== FIT TO CANVAS COMPLETE ===');
   };
 
@@ -1446,7 +1462,7 @@ export default function Canvas() {
           <div 
             className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
-              backgroundImage: `radial-gradient(circle, rgba(229, 231, 235, 0.6) 2px, transparent 2px)`,
+              backgroundImage: `radial-gradient(circle, rgba(229, 231, 235, 0.5) 1px, transparent 1px)`,
               backgroundSize: `${24 * (zoomLevel / 100)}px ${24 * (zoomLevel / 100)}px`,
               backgroundPosition: `${panState.x}px ${panState.y}px`
             }}
@@ -1466,8 +1482,8 @@ export default function Canvas() {
             </Button>
           )}
 
-          {/* Zoom Controls - Bottom Right */}
-          <div className="absolute bottom-4 right-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10">
+          {/* Zoom Controls - Bottom Right with 16px margin */}
+          <div className="absolute flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10" style={{ bottom: '16px', right: '16px' }}>
             <Button
               variant="ghost"
               size="sm"
