@@ -3180,9 +3180,9 @@ export default function Canvas() {
               {/* Unified SortableContext for ALL tasks to enable cross-section dragging */}
               <SortableContext items={todoListTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
               {/* Add New Section */}
-              <div className="flex space-x-2 p-3 bg-gray-50 rounded-lg">
+              <div className="flex space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <Input
-                  placeholder="New section name..."
+                  placeholder="Create a new section..."
                   value={newSectionName}
                   onChange={(e) => setNewSectionName(e.target.value)}
                   onKeyDown={(e) => {
@@ -3267,7 +3267,7 @@ export default function Canvas() {
                   })}
                 </SortableContext>
 
-                {/* Unsectioned Tasks */}
+                {/* Unsectioned Tasks - Show without section container */}
                 {(() => {
                   const unsectionedTasks = todoListTasks
                     .filter(task => !task.sectionId)
@@ -3276,57 +3276,53 @@ export default function Canvas() {
                   const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
                   const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
 
-                  if (unsectionedTasks.length === 0) return null;
-
                   return (
                     <DroppableGeneralTasks>
-                      <div className="border rounded-lg p-4 bg-gray-50">
-                      <h3 className="font-medium mb-3 text-gray-700">
-                        General Tasks ({unsectionedTasks.length})
-                      </h3>
-
-                      {/* Incomplete Unsectioned Tasks */}
-                      <div className="space-y-2">
-                        {incompleteUnsectioned.map(task => (
-                          <SortableTaskItem key={task.id} task={task} />
-                        ))}
-                      </div>
-
-                      {/* Add New General Task */}
-                      <div className="flex space-x-2 pt-3 mt-3 border-t border-gray-200">
-                        <Input
-                          placeholder="Add a general task..."
-                          value={generalTaskInput}
-                          onChange={(e) => setGeneralTaskInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') addNewTask();
-                          }}
-                          className="flex-1 h-8"
-                          data-testid="input-new-general-task"
-                        />
-                        <Button
-                          size="sm"
-                          onClick={() => addNewTask()}
-                          disabled={!generalTaskInput.trim()}
-                          data-testid="button-add-general-task"
-                        >
-                          <Plus className="w-4 h-4" />
-                        </Button>
-                      </div>
-
-                      {/* Completed General Tasks */}
-                      {completedUnsectioned.length > 0 && (
-                        <div className="pt-3 mt-3 border-t border-gray-200">
-                          <h4 className="text-sm font-medium text-gray-500 mb-2">
-                            Completed ({completedUnsectioned.length})
-                          </h4>
+                      <div className="space-y-3">
+                        {/* Incomplete Unsectioned Tasks */}
+                        {incompleteUnsectioned.length > 0 && (
                           <div className="space-y-2">
-                            {completedUnsectioned.map(task => (
+                            {incompleteUnsectioned.map(task => (
                               <SortableTaskItem key={task.id} task={task} />
                             ))}
                           </div>
+                        )}
+
+                        {/* Add New Task Input */}
+                        <div className="flex space-x-2 p-3 bg-gray-50 rounded-lg">
+                          <Input
+                            placeholder="Add a task..."
+                            value={generalTaskInput}
+                            onChange={(e) => setGeneralTaskInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') addNewTask();
+                            }}
+                            className="flex-1 h-8"
+                            data-testid="input-new-general-task"
+                          />
+                          <Button
+                            size="sm"
+                            onClick={() => addNewTask()}
+                            disabled={!generalTaskInput.trim()}
+                            data-testid="button-add-general-task"
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
                         </div>
-                      )}
+
+                        {/* Completed Tasks */}
+                        {completedUnsectioned.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-sm font-medium text-gray-500">
+                              Completed ({completedUnsectioned.length})
+                            </h4>
+                            <div className="space-y-2">
+                              {completedUnsectioned.map(task => (
+                                <SortableTaskItem key={task.id} task={task} />
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </DroppableGeneralTasks>
                   );
