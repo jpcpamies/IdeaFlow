@@ -413,13 +413,13 @@ export default function Canvas() {
     
     // Find a good position for the new card - center of current viewport
     const canvas = canvasRef.current?.parentElement;
-    let newX = 200;
-    let newY = 200;
+    let newX = Math.round(200);
+    let newY = Math.round(200);
     
     if (canvas) {
       // Position in center of visible area
-      const centerX = (canvas.scrollLeft + canvas.clientWidth / 2) / (zoomLevel / 100);
-      const centerY = (canvas.scrollTop + canvas.clientHeight / 2) / (zoomLevel / 100);
+      const centerX = Math.round((canvas.scrollLeft + canvas.clientWidth / 2) / (zoomLevel / 100));
+      const centerY = Math.round((canvas.scrollTop + canvas.clientHeight / 2) / (zoomLevel / 100));
       
       // Check for overlaps and adjust if needed
       const existingPositions = ideas.map((idea: Idea) => ({ x: idea.canvasX, y: idea.canvasY }));
@@ -433,8 +433,8 @@ export default function Canvas() {
         );
         
         if (!overlaps) {
-          newX = testX;
-          newY = testY;
+          newX = Math.round(testX);
+          newY = Math.round(testY);
           break;
         }
       }
@@ -446,8 +446,8 @@ export default function Canvas() {
       description: newIdeaDescription.trim(),
       groupId: finalGroupId,
       color: finalColor,
-      canvasX: newX,
-      canvasY: newY,
+      canvasX: Math.round(newX),
+      canvasY: Math.round(newY),
     };
 
     console.log('Creating idea with data:', ideaData);
