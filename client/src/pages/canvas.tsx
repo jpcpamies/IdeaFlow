@@ -148,6 +148,12 @@ export default function Canvas() {
   // Separate input state for each section and general tasks
   const [sectionInputs, setSectionInputs] = useState<Record<string, string>>({});
   const [generalTaskInput, setGeneralTaskInput] = useState("");
+  
+  // Task edit dialog states
+  const [isTaskEditDialogOpen, setIsTaskEditDialogOpen] = useState(false);
+  const [taskBeingEdited, setTaskBeingEdited] = useState<Task | null>(null);
+  const [editTaskTitle, setEditTaskTitle] = useState("");
+  const [editTaskDescription, setEditTaskDescription] = useState("");
   const [newSectionName, setNewSectionName] = useState("");
   
   // Form State
@@ -1118,6 +1124,63 @@ export default function Canvas() {
     setEditingTaskId(task.id);
     setEditingTaskTitle(task.title);
   };
+  
+  // Open task edit dialog with linked idea data
+  const openTaskEditDialog = (task: Task) => {
+    setTaskBeingEdited(task);
+    setEditTaskTitle(task.title);
+    
+    // Get linked idea description if it exists
+    if (task.ideaId) {
+      const linkedIdea = ideas.find(idea => idea.id === task.ideaId);
+      setEditTaskDescription(linkedIdea?.description || "");
+    } else {
+      setEditTaskDescription("");
+    }
+    
+    setIsTaskEditDialogOpen(true);
+  };
+  
+  // Save task edit from dialog
+  const saveTaskEditDialog = () => {
+    if (!taskBeingEdited || !editTaskTitle.trim()) return;
+    
+    updateTaskMutation.mutate({
+      id: taskBeingEdited.id,
+      updates: { title: editTaskTitle.trim() }
+    });
+    
+    // Also update linked idea if it exists
+    if (taskBeingEdited.ideaId) {
+      const linkedIdea = ideas.find(idea => idea.id === taskBeingEdited.ideaId);
+      if (linkedIdea) {
+        updateIdeaMutation.mutate({
+          id: linkedIdea.id,
+          updates: {
+            title: editTaskTitle.trim(),
+            description: editTaskDescription
+          }
+        });
+      }
+    }
+    
+    setIsTaskEditDialogOpen(false);
+    setTaskBeingEdited(null);
+    setEditTaskTitle("");
+    setEditTaskDescription("");
+  };
+  
+  // Delete task with confirmation
+  const confirmDeleteTask = (task: Task) => {
+    const linkedIdea = task.ideaId ? ideas.find(idea => idea.id === task.ideaId) : null;
+    const message = linkedIdea 
+      ? `Delete task "${task.title}"? This will also remove the linked idea card from the canvas.`
+      : `Delete task "${task.title}"?`;
+      
+    if (confirm(message)) {
+      deleteTaskMutation.mutate(task.id);
+    }
+  };
 
   const saveTaskEdit = () => {
     if (!editingTaskId || !editingTaskTitle.trim()) return;
@@ -1445,7 +1508,7 @@ export default function Canvas() {
       <div
         ref={setNodeRef}
         style={style}
-        className={`flex items-center space-x-3 p-2 rounded-lg ${
+        className={`group flex items-center space-x-3 p-2 rounded-lg ${
           isDragging ? 'shadow-lg bg-white' : 'hover:bg-gray-50'
         }`}
         data-testid={`sortable-task-${task.id}`}
@@ -1496,17 +1559,49 @@ export default function Canvas() {
             </Button>
           </div>
         ) : (
-          <div
-            className={`flex-1 cursor-pointer ${
-              task.completed 
-                ? 'line-through text-gray-500' 
-                : 'text-gray-900'
-            }`}
-            onClick={() => startEditingTask(task)}
-            data-testid={`text-task-${task.id}`}
-          >
-            {task.title}
-          </div>
+          <>
+            <div
+              className={`flex-1 cursor-pointer ${
+                task.completed 
+                  ? 'line-through text-gray-500' 
+                  : 'text-gray-900'
+              }`}
+              onClick={() => startEditingTask(task)}
+              data-testid={`text-task-${task.id}`}
+            >
+              {task.title}
+            </div>
+            
+            {/* Three-dot menu */}
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 w-6 p-0 hover:bg-gray-200"
+                    onClick={(e) => e.stopPropagation()}
+                    data-testid={`task-menu-${task.id}`}
+                  >
+                    <MoreHorizontal className="w-3 h-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openTaskEditDialog(task)}>
+                    <Edit className="mr-2 w-3 h-3" />
+                    Edit Task
+                  </DropdownMenuItem>
+                  <DropdownMenuItem 
+                    onClick={() => confirmDeleteTask(task)}
+                    className="text-red-600"
+                  >
+                    <Trash2 className="mr-2 w-3 h-3" />
+                    Delete Task
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </>
         )}
       </div>
     );
@@ -3524,6 +3619,53 @@ export default function Canvas() {
             </Button>
             <Button variant="outline" onClick={closeTodoListModal} data-testid="button-close-todolist-modal">
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Task Edit Dialog */}
+      <Dialog open={isTaskEditDialogOpen} onOpenChange={setIsTaskEditDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Task</DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Task Title</label>
+              <Input
+                value={editTaskTitle}
+                onChange={(e) => setEditTaskTitle(e.target.value)}
+                placeholder="Enter task title..."
+                className="mt-1"
+                data-testid="input-edit-task-title"
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium">Description</label>
+              <textarea
+                value={editTaskDescription}
+                onChange={(e) => setEditTaskDescription(e.target.value)}
+                placeholder="Enter task description..."
+                rows={3}
+                className="mt-1 w-full px-3 py-2 border border-input rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                data-testid="textarea-edit-task-description"
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTaskEditDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={saveTaskEditDialog}
+              disabled={!editTaskTitle.trim()}
+              data-testid="button-save-task-edit"
+            >
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>
