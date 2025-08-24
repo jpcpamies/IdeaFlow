@@ -87,6 +87,7 @@ export default function Canvas() {
   const [isEditIdeaDialogOpen, setIsEditIdeaDialogOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [ideaToDelete, setIdeaToDelete] = useState<Idea | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
   
   // Form State
   const [newIdeaTitle, setNewIdeaTitle] = useState("");
