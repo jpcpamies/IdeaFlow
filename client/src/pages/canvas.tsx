@@ -40,9 +40,7 @@ import {
   Trash2,
   ArrowLeft,
   MoreHorizontal,
-  Maximize2,
-  Grid3x3,
-  Shuffle
+  Maximize2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea } from "@shared/schema";
@@ -130,59 +128,89 @@ export default function Canvas() {
     ? ideas.filter(idea => idea.groupId === selectedFilter)
     : ideas;
 
-  // Helper functions for canvas organization
+  // Perfect fit-to-canvas functionality
   const calculateBoundingBox = (cardIdeas: Idea[]) => {
     if (cardIdeas.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     
+    // Get all card positions and calculate precise boundaries
+    const cardWidth = 240;
+    const cardHeight = 120;
+    
     const positions = cardIdeas.map(idea => ({
-      x: idea.canvasX,
-      y: idea.canvasY,
-      right: idea.canvasX + 240, // Card width
-      bottom: idea.canvasY + 120  // Card height
+      left: idea.canvasX,
+      top: idea.canvasY,
+      right: idea.canvasX + cardWidth,
+      bottom: idea.canvasY + cardHeight
     }));
     
-    const minX = Math.min(...positions.map(p => p.x));
-    const minY = Math.min(...positions.map(p => p.y));
+    // Find extreme positions
+    const minX = Math.min(...positions.map(p => p.left));
+    const minY = Math.min(...positions.map(p => p.top));
     const maxX = Math.max(...positions.map(p => p.right));
     const maxY = Math.max(...positions.map(p => p.bottom));
     
-    console.log('Bounding box calculation:', { minX, minY, maxX, maxY });
+    console.log('Bounding box calculation:');
+    console.log('  Cards analyzed:', cardIdeas.length);
+    console.log('  Leftmost card at x:', minX);
+    console.log('  Rightmost card ends at x:', maxX);
+    console.log('  Topmost card at y:', minY);
+    console.log('  Bottommost card ends at y:', maxY);
+    console.log('  Total content area:', (maxX - minX), 'x', (maxY - minY));
+    
     return { minX, minY, maxX, maxY };
   };
 
   const fitToView = () => {
-    console.log('Fit to view triggered with', filteredIdeas.length, 'ideas');
+    console.log('=== FIT TO CANVAS OPERATION ===');
+    console.log('Available ideas to analyze:', filteredIdeas.length);
+    
     if (filteredIdeas.length === 0) {
-      console.log('No ideas to fit');
+      console.log('No ideas to fit - operation cancelled');
       return;
     }
     
     const canvas = canvasRef.current;
     if (!canvas) {
-      console.log('No canvas ref available');
+      console.log('Canvas reference not available - operation cancelled');
       return;
     }
     
+    // Calculate precise content boundaries
     const bounds = calculateBoundingBox(filteredIdeas);
-    console.log('Content bounds:', bounds);
     
-    const canvasWidth = canvas.clientWidth;
-    const canvasHeight = canvas.clientHeight;
-    console.log('Canvas dimensions:', canvasWidth, 'x', canvasHeight);
+    // Get viewport dimensions
+    const viewportWidth = canvas.clientWidth;
+    const viewportHeight = canvas.clientHeight;
+    console.log('Viewport dimensions:', viewportWidth, 'x', viewportHeight);
     
-    // Add generous padding (100px on all sides)
-    const contentWidth = bounds.maxX - bounds.minX + 200; 
-    const contentHeight = bounds.maxY - bounds.minY + 200;
-    console.log('Content with padding:', contentWidth, 'x', contentHeight);
+    // Calculate content dimensions
+    const contentWidth = bounds.maxX - bounds.minX;
+    const contentHeight = bounds.maxY - bounds.minY;
+    console.log('Raw content dimensions:', contentWidth, 'x', contentHeight);
     
-    const scaleX = canvasWidth / contentWidth;
-    const scaleY = canvasHeight / contentHeight;
-    const optimalZoom = Math.min(scaleX, scaleY, 1) * 100; // Cap at 100%
+    // Add adequate padding (125px on all sides)
+    const paddingMargin = 125;
+    const paddedWidth = contentWidth + (paddingMargin * 2);
+    const paddedHeight = contentHeight + (paddingMargin * 2);
+    console.log('Content with padding:', paddedWidth, 'x', paddedHeight);
     
-    const finalZoom = Math.max(20, Math.min(200, optimalZoom)); // Keep within bounds
-    console.log('Calculated zoom:', optimalZoom, '-> Final zoom:', finalZoom);
+    // Calculate optimal zoom ratios
+    const zoomRatioX = viewportWidth / paddedWidth;
+    const zoomRatioY = viewportHeight / paddedHeight;
+    console.log('Zoom ratios - X:', zoomRatioX.toFixed(3), 'Y:', zoomRatioY.toFixed(3));
     
+    // Use the smaller ratio to ensure all content fits
+    const optimalZoomRatio = Math.min(zoomRatioX, zoomRatioY);
+    const optimalZoomPercent = optimalZoomRatio * 100;
+    console.log('Optimal zoom ratio:', optimalZoomRatio.toFixed(3), '(', optimalZoomPercent.toFixed(1), '%)');
+    
+    // Apply zoom bounds (20% minimum, 200% maximum)
+    const finalZoom = Math.max(20, Math.min(200, optimalZoomPercent));
+    console.log('Final zoom after bounds:', finalZoom.toFixed(1), '%');
+    
+    // Apply the zoom
     setZoomLevel(finalZoom);
+    console.log('=== FIT TO CANVAS COMPLETE ===');
   };
 
   // Debug logging (remove in production)
@@ -389,130 +417,6 @@ export default function Canvas() {
     });
   };
 
-  // Canvas organization functions
-  const handleGroupIdeas = async () => {
-    console.log('Group Ideas clicked! Ideas count:', filteredIdeas.length);
-    if (filteredIdeas.length === 0) {
-      console.log('No ideas to group');
-      return;
-    }
-    
-    // Group ideas by their group or create ungrouped cluster
-    const groupedIdeas = filteredIdeas.reduce((acc, idea) => {
-      const key = idea.groupId || 'ungrouped';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(idea);
-      return acc;
-    }, {} as Record<string, Idea[]>);
-    
-    console.log('Grouped ideas:', groupedIdeas);
-    
-    // Calculate cluster positions - more spaced out
-    const groupKeys = Object.keys(groupedIdeas);
-    const clustersPerRow = Math.ceil(Math.sqrt(groupKeys.length));
-    const clusterSpacing = 400; // More spacing between groups
-    
-    const updatePromises: Promise<any>[] = [];
-    
-    groupKeys.forEach((groupKey, index) => {
-      const clusterX = (index % clustersPerRow) * clusterSpacing + 150;
-      const clusterY = Math.floor(index / clustersPerRow) * clusterSpacing + 150;
-      
-      console.log(`Cluster ${groupKey} at position:`, clusterX, clusterY);
-      
-      groupedIdeas[groupKey].forEach((idea, cardIndex) => {
-        // Create pile effect with small offsets (3-5px as requested)
-        const offsetX = (cardIndex % 3) * 4;
-        const offsetY = (cardIndex % 3) * 4;
-        const rowOffset = Math.floor(cardIndex / 3) * 20;
-        
-        const newX = clusterX + offsetX;
-        const newY = clusterY + offsetY + rowOffset;
-        
-        console.log(`Moving card ${idea.id} to:`, newX, newY);
-        
-        updatePromises.push(
-          updateIdeaMutation.mutateAsync({
-            id: idea.id,
-            updates: { canvasX: newX, canvasY: newY }
-          })
-        );
-      });
-    });
-    
-    try {
-      console.log('Updating', updatePromises.length, 'card positions...');
-      await Promise.all(updatePromises);
-      console.log('Group positioning complete, triggering fit-to-view');
-      setTimeout(() => fitToView(), 200); // Longer delay for DOM updates
-    } catch (error) {
-      console.error('Failed to group ideas:', error);
-    }
-  };
-
-  const handleDisperseIdeas = async () => {
-    console.log('Disperse Ideas clicked! Ideas count:', filteredIdeas.length);
-    if (filteredIdeas.length === 0) {
-      console.log('No ideas to disperse');
-      return;
-    }
-    
-    // Group ideas by their group for zone placement
-    const groupedIdeas = filteredIdeas.reduce((acc, idea) => {
-      const key = idea.groupId || 'ungrouped';
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(idea);
-      return acc;
-    }, {} as Record<string, Idea[]>);
-    
-    console.log('Dispersing grouped ideas:', groupedIdeas);
-    
-    const cardWidth = 240;
-    const cardHeight = 120;
-    const padding = 30; // More padding to prevent overlaps
-    const zoneSpacing = 150; // More spacing between group zones
-    
-    const groupKeys = Object.keys(groupedIdeas);
-    const zonesPerRow = Math.ceil(Math.sqrt(groupKeys.length));
-    
-    const updatePromises: Promise<any>[] = [];
-    
-    groupKeys.forEach((groupKey, groupIndex) => {
-      const zoneX = (groupIndex % zonesPerRow) * (cardWidth * 4 + zoneSpacing);
-      const zoneY = Math.floor(groupIndex / zonesPerRow) * (cardHeight * 4 + zoneSpacing);
-      
-      console.log(`Group ${groupKey} zone at:`, zoneX, zoneY);
-      
-      const cardsInGroup = groupedIdeas[groupKey];
-      const cardsPerRow = Math.ceil(Math.sqrt(cardsInGroup.length));
-      
-      cardsInGroup.forEach((idea, cardIndex) => {
-        const row = Math.floor(cardIndex / cardsPerRow);
-        const col = cardIndex % cardsPerRow;
-        
-        const newX = zoneX + col * (cardWidth + padding) + 100;
-        const newY = zoneY + row * (cardHeight + padding) + 100;
-        
-        console.log(`Dispersing card ${idea.id} to:`, newX, newY);
-        
-        updatePromises.push(
-          updateIdeaMutation.mutateAsync({
-            id: idea.id,
-            updates: { canvasX: newX, canvasY: newY }
-          })
-        );
-      });
-    });
-    
-    try {
-      console.log('Updating', updatePromises.length, 'card positions for dispersion...');
-      await Promise.all(updatePromises);
-      console.log('Dispersion complete, triggering fit-to-view');
-      setTimeout(() => fitToView(), 200); // Longer delay for DOM updates
-    } catch (error) {
-      console.error('Failed to disperse ideas:', error);
-    }
-  };
 
   const handleAssignToGroup = async (groupId: string) => {
     try {
@@ -1072,42 +976,6 @@ export default function Canvas() {
               </div>
             </div>
 
-            {/* Canvas Organization */}
-            <div className="mb-6">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Organization</h3>
-              <div className="space-y-2">
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start text-sm"
-                  onClick={(e) => {
-                    console.log('Group Ideas button clicked');
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleGroupIdeas();
-                  }}
-                  disabled={filteredIdeas.length === 0 || updateIdeaMutation.isPending}
-                  data-testid="button-group-ideas"
-                >
-                  <Grid3x3 className="mr-2 w-4 h-4" />
-                  {updateIdeaMutation.isPending ? 'Grouping...' : 'Group Ideas'}
-                </Button>
-                <Button 
-                  variant="outline" 
-                  className="w-full justify-start text-sm"
-                  onClick={(e) => {
-                    console.log('Disperse Ideas button clicked');
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleDisperseIdeas();
-                  }}
-                  disabled={filteredIdeas.length === 0 || updateIdeaMutation.isPending}
-                  data-testid="button-disperse-ideas"
-                >
-                  <Shuffle className="mr-2 w-4 h-4" />
-                  {updateIdeaMutation.isPending ? 'Dispersing...' : 'Disperse Ideas'}
-                </Button>
-              </div>
-            </div>
           </div>
 
           <div className="p-4 border-t border-gray-200">
