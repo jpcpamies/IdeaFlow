@@ -35,8 +35,8 @@ import {
   ZoomIn,
   ZoomOut,
   ChevronRight,
-  ChevronLeft,
   ChevronDown,
+  ChevronLeft,
   User,
   Lightbulb,
   Target,
@@ -2222,7 +2222,7 @@ export default function Canvas() {
             <Palette className="text-white w-5 h-5" />
           </div>
           <h1 className="text-xl font-bold text-gray-900">
-            {projectLoading ? 'Loading...' : currentProject?.name || 'Brain Storm to ToDo List'}
+            {projectLoading ? 'Loading...' : (currentProject as any)?.name || 'Brain Storm to ToDo List'}
           </h1>
         </div>
         
@@ -2779,24 +2779,17 @@ export default function Canvas() {
                 return (
                   <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center space-x-3">
-                        <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openTodoListModal(todoList)}
-                          className="h-6 w-6 p-0 hover:bg-gray-200"
-                          title="Open TodoList Editor"
-                          data-testid={`button-expand-todolist-${todoList.id}`}
-                        >
-                          <Settings className="w-3 h-3" />
-                        </Button>
-                      </div>
-                      {pendingCount > 0 && (
-                        <Badge variant="outline" className="text-xs">
-                          {pendingCount} left
-                        </Badge>
-                      )}
+                      <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openTodoListModal(todoList)}
+                        className="h-6 w-6 p-0 hover:bg-gray-200"
+                        title="Expand TodoList"
+                        data-testid={`button-expand-todolist-${todoList.id}`}
+                      >
+                        <ChevronDown className="w-3 h-3" />
+                      </Button>
                     </div>
                     
                     <div className="space-y-2">
