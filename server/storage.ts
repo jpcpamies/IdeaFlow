@@ -42,6 +42,7 @@ export interface IStorage {
   getTask(id: string): Promise<Task | undefined>;
   getTasksByIdeaId(ideaId: string): Promise<Task[]>;
   unlinkTasksFromIdea(ideaId: string): Promise<number>;
+  moveTasksToGroup(ideaIds: string[], targetGroupId: string): Promise<number>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, updates: Partial<InsertTask>): Promise<Task>;
   deleteTask(id: string): Promise<void>;
@@ -181,6 +182,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tasks.ideaId, ideaId));
     
     // Return the number of affected rows
+    return result.rowCount || 0;
+  }
+
+  async moveTasksToGroup(ideaIds: string[], targetGroupId: string): Promise<number> {
+    // Find the target group's TodoList (if it exists)
+    const [targetTodoList] = await db
+      .select()
+      .from(todoLists)
+      .where(eq(todoLists.groupId, targetGroupId))
+      .limit(1);
+
+    if (!targetTodoList) {
+      // No TodoList exists for target group yet, just return 0
+      // Tasks will be handled when TodoList is created
+      return 0;
+    }
+
+    // Find all tasks that are linked to the ideas we're moving
+    const tasksToMove = await db
+      .select()
+      .from(tasks)
+      .where(inArray(tasks.ideaId, ideaIds));
+
+    if (tasksToMove.length === 0) {
+      return 0;
+    }
+
+    // Move tasks to the target TodoList
+    const result = await db
+      .update(tasks)
+      .set({ todoListId: targetTodoList.id })
+      .where(inArray(tasks.ideaId, ideaIds));
+
     return result.rowCount || 0;
   }
 

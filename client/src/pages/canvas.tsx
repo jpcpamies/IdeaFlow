@@ -2016,6 +2016,15 @@ export default function Canvas() {
 
   const handleAssignToGroup = async (groupId: string) => {
     try {
+      // IMPORTANT: Move tasks to target group before reassigning ideas
+      // This migrates existing tasks to the target group's TodoList (if it exists)
+      const migrateRes = await apiRequest('PATCH', `/api/groups/${groupId}/migrate-tasks`, {
+        ideaIds: selectedCards
+      });
+      if (!migrateRes.ok) {
+        console.warn('Failed to migrate tasks to target group');
+      }
+      
       // Update all selected cards
       const updatePromises = selectedCards.map(cardId => 
         updateIdeaMutation.mutateAsync({
@@ -2029,6 +2038,7 @@ export default function Canvas() {
       // Refresh data to update UI
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
       
       setIsAssignGroupModalOpen(false);
       setIsGroupActionsModalOpen(false);
@@ -2062,13 +2072,13 @@ export default function Canvas() {
       
       const newGroup = await groupRes.json();
       
-      // IMPORTANT: Clean up task associations before moving ideas
-      // Unlink tasks that are associated with ideas we're about to move
-      for (const ideaId of selectedCards) {
-        const unlinkRes = await apiRequest('PATCH', `/api/ideas/${ideaId}/unlink-tasks`, {});
-        if (!unlinkRes.ok) {
-          console.warn(`Failed to unlink tasks for idea ${ideaId}`);
-        }
+      // IMPORTANT: Move tasks to target group instead of unlinking them
+      // This migrates existing tasks to the new group's TodoList (if it exists)
+      const migrateRes = await apiRequest('PATCH', `/api/groups/${newGroup.id}/migrate-tasks`, {
+        ideaIds: selectedCards
+      });
+      if (!migrateRes.ok) {
+        console.warn('Failed to migrate tasks to new group');
       }
       
       // Assign selected cards to the new group

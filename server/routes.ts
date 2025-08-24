@@ -331,29 +331,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Unlink tasks from an idea (for group reassignments)
-  app.patch('/api/ideas/:id/unlink-tasks', isAuthenticated, async (req: any, res) => {
+  // Migrate tasks to a different group (for group reassignments)  
+  app.patch('/api/groups/:id/migrate-tasks', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const ideaId = req.params.id;
+      const targetGroupId = req.params.id;
+      const { ideaIds } = req.body;
       
-      // Verify user owns the idea
-      const idea = await storage.getIdea(ideaId);
-      if (!idea || idea.userId !== userId) {
-        return res.status(404).json({ message: "Idea not found" });
+      if (!ideaIds || !Array.isArray(ideaIds) || ideaIds.length === 0) {
+        return res.status(400).json({ message: "ideaIds array is required" });
       }
       
-      // Unlink all tasks that reference this idea
-      const unlinkedCount = await storage.unlinkTasksFromIdea(ideaId);
+      // Verify user owns the target group
+      const targetGroup = await storage.getGroup(targetGroupId);
+      if (!targetGroup || targetGroup.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      
+      // Verify user owns all the ideas being moved
+      for (const ideaId of ideaIds) {
+        const idea = await storage.getIdea(ideaId);
+        if (!idea || idea.userId !== userId) {
+          return res.status(403).json({ message: `Access denied for idea ${ideaId}` });
+        }
+      }
+      
+      // Move tasks to the target group's TodoList
+      const migratedCount = await storage.moveTasksToGroup(ideaIds, targetGroupId);
       
       res.json({ 
-        message: "Tasks unlinked successfully",
-        ideaId: ideaId,
-        unlinkedTaskCount: unlinkedCount
+        message: "Tasks migrated successfully",
+        targetGroupId: targetGroupId,
+        migratedTaskCount: migratedCount,
+        ideaIds: ideaIds
       });
     } catch (error) {
-      console.error("Error unlinking tasks from idea:", error);
-      res.status(500).json({ message: "Failed to unlink tasks from idea" });
+      console.error("Error migrating tasks to group:", error);
+      res.status(500).json({ message: "Failed to migrate tasks to group" });
     }
   });
 
@@ -428,16 +442,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const groupIdeas = await storage.getProjectIdeas(userId, projectId);
       const ideasInGroup = groupIdeas.filter(idea => idea.groupId === groupId);
       
-      // Create tasks from group ideas
+      // For each idea, check if tasks already exist, create only if needed
       for (let i = 0; i < ideasInGroup.length; i++) {
         const idea = ideasInGroup[i];
-        await storage.createTask({
-          todoListId: todoList.id,
-          ideaId: idea.id,
-          title: idea.title,
-          completed: false,
-          orderIndex: i,
-        });
+        
+        // Check if tasks already exist for this idea
+        const existingTasks = await storage.getTasksByIdeaId(idea.id);
+        
+        if (existingTasks.length > 0) {
+          // Tasks exist - move them to this TodoList
+          await storage.moveTasksToTodoList(
+            existingTasks.map(t => t.id), 
+            todoList.id, 
+            userId
+          );
+          console.log(`Moved ${existingTasks.length} existing tasks for idea ${idea.id} to TodoList ${todoList.id}`);
+        } else {
+          // No tasks exist - create a new task
+          await storage.createTask({
+            todoListId: todoList.id,
+            ideaId: idea.id,
+            title: idea.title,
+            completed: false,
+            orderIndex: i,
+          });
+          console.log(`Created new task for idea ${idea.id} in TodoList ${todoList.id}`);
+        }
       }
 
       res.json(todoList);
@@ -511,6 +541,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create duplicate todolist
       const duplicatedTodoList = await storage.createTodoList({
         userId,
+        projectId: originalTodoList.projectId,
         groupId: originalTodoList.groupId,
         name: `${originalTodoList.name} (Copy)`,
       });
@@ -916,6 +947,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Create idea card on canvas
         const ideaData = {
           userId,
+          projectId: todoList.projectId,
           groupId: todoList.groupId,
           title: taskData.title,
           description: `Task from ${todoList.name}`,
