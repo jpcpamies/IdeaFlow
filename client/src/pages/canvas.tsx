@@ -566,9 +566,9 @@ export default function Canvas() {
 
   // Create TodoList mutation
   const createTodoListMutation = useMutation({
-    mutationFn: async ({ groupId, name }: { groupId: string; name: string }) => {
-      console.log('Creating TodoList for group:', groupId, 'with name:', name);
-      const response = await apiRequest('POST', '/api/todolists', { groupId, name });
+    mutationFn: async ({ groupId, name, projectId }: { groupId: string; name: string; projectId: string }) => {
+      console.log('Creating TodoList for group:', groupId, 'with name:', name, 'in project:', projectId);
+      const response = await apiRequest('POST', '/api/todolists', { groupId, name, projectId });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to create TodoList');
@@ -577,7 +577,7 @@ export default function Canvas() {
     },
     onSuccess: (todoList) => {
       console.log('TodoList created successfully:', todoList);
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', { projectId }] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
     },
     onError: (error) => {
@@ -2147,7 +2147,7 @@ export default function Canvas() {
       return;
     }
     
-    createTodoListMutation.mutate({ groupId, name: group.name });
+    createTodoListMutation.mutate({ groupId, name: group.name, projectId: projectId! });
   };
 
   // Toggle task completion
