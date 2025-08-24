@@ -861,7 +861,11 @@ export default function Canvas() {
 
   // Drag and Drop Sensors for TodoList Modal
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Prevent accidental drags
+      }
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -879,20 +883,28 @@ export default function Canvas() {
   // Section reordering mutation
   const reorderSectionMutation = useMutation({
     mutationFn: async ({ id, orderIndex }: { id: string; orderIndex: number }) => {
+      console.log('API call:', { id, orderIndex });
       const response = await apiRequest('PATCH', `/api/sections/${id}`, { orderIndex });
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('API Error:', errorData);
         throw new Error(errorData.message || 'Failed to reorder section');
       }
-      return response.json();
+      const result = await response.json();
+      console.log('API Success:', result);
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('Mutation success, invalidating queries...');
       // More comprehensive invalidation to ensure UI updates
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       
       // Force refetch to ensure order changes are visible immediately
       queryClient.refetchQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+    },
+    onError: (error) => {
+      console.error('Mutation failed:', error);
     }
   });
 
@@ -1125,29 +1137,25 @@ export default function Canvas() {
         const activeIndex = sortedSections.findIndex(section => section.id === activeSectionId);
         const overIndex = sortedSections.findIndex(section => section.id === overSectionId);
         
-        // Calculate new order index based on drop position
+        // Simpler integer-based ordering - reorder all sections
         let newOrderIndex: number;
         
-        if (overIndex === 0) {
-          // Moving to first position
-          newOrderIndex = Math.max(0, (overSection.orderIndex || 0) - 1);
-        } else if (activeIndex < overIndex) {
-          // Moving down in the list
-          const nextSection = sortedSections[overIndex + 1];
-          if (nextSection) {
-            newOrderIndex = ((overSection.orderIndex || 0) + (nextSection.orderIndex || 0)) / 2;
-          } else {
-            newOrderIndex = (overSection.orderIndex || 0) + 1;
-          }
+        if (activeIndex < overIndex) {
+          // Moving down: place after the target section
+          newOrderIndex = (overSection.orderIndex || 0) + 1;
         } else {
-          // Moving up in the list
-          const prevSection = sortedSections[overIndex - 1];
-          if (prevSection) {
-            newOrderIndex = ((prevSection.orderIndex || 0) + (overSection.orderIndex || 0)) / 2;
-          } else {
-            newOrderIndex = (overSection.orderIndex || 0) - 1;
-          }
+          // Moving up: place at the target section's position
+          newOrderIndex = overSection.orderIndex || 0;
         }
+        
+        console.log('Section reorder:', {
+          activeSection: activeSection.name,
+          overSection: overSection.name,
+          activeIndex,
+          overIndex,
+          oldOrder: activeSection.orderIndex,
+          newOrder: newOrderIndex
+        });
 
 
         reorderSectionMutation.mutate({
@@ -1523,7 +1531,7 @@ export default function Canvas() {
     } = useSortable({ id: `section-${section.id}` });
 
     const style = {
-      transform: CSS.Transform.toString(transform),
+      transform: transform ? `translateY(${transform.y}px)` : undefined, // Constrain to Y-axis only
       transition,
       opacity: isDragging ? 0.8 : 1,
     };
