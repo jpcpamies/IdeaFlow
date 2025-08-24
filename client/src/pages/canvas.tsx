@@ -225,6 +225,15 @@ export default function Canvas() {
     console.log('Canvas container dimensions:', viewportWidth, 'x', viewportHeight);
     console.log('Sidebar affects available width:', isRightSidebarOpen ? 'YES' : 'NO');
     
+    // Account for the actual available space based on sidebar state
+    // When sidebar is hidden, we have more horizontal space available
+    let effectiveViewportWidth = viewportWidth;
+    if (!isRightSidebarOpen) {
+      // Sidebar was 320px wide (w-80), so we have that extra space
+      effectiveViewportWidth = viewportWidth + 320;
+      console.log('Sidebar hidden - using expanded width:', effectiveViewportWidth);
+    }
+    
     // Calculate content dimensions
     const contentWidth = bounds.maxX - bounds.minX;
     const contentHeight = bounds.maxY - bounds.minY;
@@ -236,8 +245,8 @@ export default function Canvas() {
     const paddedHeight = contentHeight + (paddingMargin * 2);
     console.log('Content with padding:', paddedWidth, 'x', paddedHeight);
     
-    // Calculate zoom percentage needed to fit content
-    const zoomRatioX = viewportWidth / paddedWidth;
+    // Calculate zoom percentage needed to fit content using effective viewport width
+    const zoomRatioX = effectiveViewportWidth / paddedWidth;
     const zoomRatioY = viewportHeight / paddedHeight;
     console.log('Zoom ratios - X:', zoomRatioX.toFixed(3), 'Y:', zoomRatioY.toFixed(3));
     
@@ -965,7 +974,7 @@ export default function Canvas() {
     
     const target = event.target as HTMLElement;
     // Don't pan if clicking on cards, buttons, or other interactive elements
-    if (target.closest('[data-card-id]') || target.closest('button') || target !== event.currentTarget) {
+    if (target.closest('[data-card-id]') || target.closest('button')) {
       return;
     }
     
@@ -980,7 +989,7 @@ export default function Canvas() {
     }));
   };
 
-  const handleCanvasPanMove = (event: React.MouseEvent) => {
+  const handleCanvasPanMoveGlobal = (event: MouseEvent) => {
     if (!panState.isPanning) return;
     
     event.preventDefault();
@@ -995,7 +1004,7 @@ export default function Canvas() {
     }));
   };
 
-  const handleCanvasPanEnd = () => {
+  const handleCanvasPanEndGlobal = () => {
     setPanState(prev => ({
       ...prev,
       isPanning: false
@@ -1095,6 +1104,19 @@ export default function Canvas() {
       };
     }
   }, [dragState.isDragging, zoomLevel]);
+
+  // Canvas panning event listeners 
+  useEffect(() => {
+    if (panState.isPanning) {
+      document.addEventListener('mousemove', handleCanvasPanMoveGlobal, { passive: false });
+      document.addEventListener('mouseup', handleCanvasPanEndGlobal, { passive: true });
+      
+      return () => {
+        document.removeEventListener('mousemove', handleCanvasPanMoveGlobal);
+        document.removeEventListener('mouseup', handleCanvasPanEndGlobal);
+      };
+    }
+  }, [panState.isPanning]);
 
   // Touch event support for mobile
   const handleTouchStart = (event: React.TouchEvent, cardId: string) => {
@@ -1462,7 +1484,7 @@ export default function Canvas() {
           <div 
             className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
-              backgroundImage: `radial-gradient(circle, rgba(229, 231, 235, 0.5) 1px, transparent 1px)`,
+              backgroundImage: `radial-gradient(circle, rgba(156, 163, 175, 0.8) 2px, transparent 2px)`,
               backgroundSize: `${24 * (zoomLevel / 100)}px ${24 * (zoomLevel / 100)}px`,
               backgroundPosition: `${panState.x}px ${panState.y}px`
             }}
@@ -1534,9 +1556,6 @@ export default function Canvas() {
             ref={canvasRef}
             className={`absolute inset-0 overflow-hidden ${panState.isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
             onMouseDown={handleCanvasPanStart}
-            onMouseMove={handleCanvasPanMove}
-            onMouseUp={handleCanvasPanEnd}
-            onMouseLeave={handleCanvasPanEnd}
             onClick={handleCanvasClick}
           >
             {/* Inner canvas with pan and zoom transforms */}
