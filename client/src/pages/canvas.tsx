@@ -77,6 +77,7 @@ import {
   useSensors,
   DragEndEvent,
   useDroppable,
+  useDndContext,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -1942,24 +1943,27 @@ export default function Canvas() {
     const { isOver, setNodeRef } = useDroppable({
       id: `section-${sectionId}`,
     });
+    const { active } = useDndContext();
+
+    // Check if we're dragging a task (not a section) to show drop indicator
+    const isDraggingTask = active && String(active.id).startsWith('task-');
+    const showDropIndicator = isOver && isDraggingTask;
 
     return (
       <div
         ref={setNodeRef}
-        className={`transition-all duration-200 ease-in-out rounded-lg ${
-          isOver 
-            ? 'bg-blue-50/80 ring-2 ring-blue-400 ring-opacity-50 shadow-lg transform scale-[1.02]' 
+        className={`relative transition-all duration-200 ease-in-out ${
+          showDropIndicator 
+            ? 'bg-blue-50/60 ring-2 ring-blue-300 ring-opacity-40' 
             : ''
         }`}
         style={{ 
           minHeight: '60px',
-          ...(isOver && {
-            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.1) 100%)'
-          })
+          borderRadius: '0.5rem'
         }}
       >
-        {isOver && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        {showDropIndicator && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
               Drop task here
             </div>
@@ -1975,31 +1979,36 @@ export default function Canvas() {
     const { isOver, setNodeRef } = useDroppable({
       id: 'general-tasks',
     });
+    const { active } = useDndContext();
+    
+    // Only show drop indicator when dragging tasks
+    const isDraggingTask = active && String(active.id).startsWith('task-');
+    const showDropIndicator = isOver && isDraggingTask;
 
     return (
       <div
         ref={setNodeRef}
         className={`relative transition-all duration-200 ease-in-out rounded-lg border-2 border-dashed ${
-          isOver 
-            ? 'bg-gray-50/80 border-gray-400 shadow-lg transform scale-[1.01]' 
+          showDropIndicator 
+            ? 'bg-gray-50/80 border-gray-400 shadow-lg' 
             : 'border-gray-200 border-opacity-50'
         }`}
         style={{ 
           minHeight: '60px',
-          ...(isOver && {
+          ...(showDropIndicator && {
             background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.1) 0%, rgba(209, 213, 219, 0.1) 100%)'
           })
         }}
       >
-        {isOver && (
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+        {showDropIndicator && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
             <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
               Drop to general tasks
             </div>
           </div>
         )}
         {children}
-        {!isOver && React.Children.count(children) === 0 && (
+        {!showDropIndicator && React.Children.count(children) === 0 && (
           <div className="flex items-center justify-center h-full text-gray-400 text-sm">
             General tasks area
           </div>
@@ -2017,10 +2026,16 @@ export default function Canvas() {
       transform,
       transition,
       isDragging,
-    } = useSortable({ id: `section-${section.id}` });
+    } = useSortable({ 
+      id: `section-${section.id}`,
+      data: {
+        type: 'section',
+        section,
+      }
+    });
 
     const style = {
-      transform: transform ? `translateY(${transform.y}px)` : undefined,
+      transform: transform ? `translate3d(0, ${transform.y}px, 0)` : undefined,
       transition: isDragging ? 'none' : transition,
       opacity: isDragging ? 0.95 : 1,
       zIndex: isDragging ? 1000 : 'auto',
@@ -2030,14 +2045,16 @@ export default function Canvas() {
       <div
         ref={setNodeRef}
         style={style}
-        className={`transition-all duration-200 ${
+        className={`${
           isDragging 
-            ? 'shadow-2xl transform scale-105 ring-2 ring-purple-300 ring-opacity-50' 
+            ? 'shadow-2xl ring-2 ring-purple-300 ring-opacity-50' 
             : ''
         }`}
       >
         <DroppableSection sectionId={section.id}>
-          <div className="group border rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
+          <div className={`group border rounded-lg p-4 bg-white transition-colors ${
+            isDragging ? 'hover:bg-white' : 'hover:bg-gray-50'
+          }`}>
             {/* Section Header with drag handle */}
             <div className="flex items-center justify-between mb-3">
               {editingSectionId === section.id ? (
@@ -2143,12 +2160,18 @@ export default function Canvas() {
       transform,
       transition,
       isDragging,
-    } = useSortable({ id: `task-${task.id}` });
+    } = useSortable({ 
+      id: `task-${task.id}`,
+      data: {
+        type: 'task',
+        task,
+      }
+    });
 
     const style = {
-      transform: CSS.Transform.toString(transform),
+      transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
       transition: isDragging ? 'none' : transition,
-      opacity: isDragging ? 0.9 : 1,
+      opacity: isDragging ? 0.95 : 1,
       zIndex: isDragging ? 999 : 'auto',
     };
 
@@ -2160,7 +2183,7 @@ export default function Canvas() {
         style={style}
         className={`group flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 ${
           isDragging 
-            ? 'shadow-2xl bg-white border-blue-300 ring-2 ring-blue-200 ring-opacity-50 transform rotate-1 scale-105' 
+            ? 'shadow-2xl bg-white border-blue-300 ring-2 ring-blue-200 ring-opacity-50' 
             : 'hover:bg-gray-50 border-transparent hover:border-gray-200 hover:shadow-sm'
         }`}
         data-testid={`sortable-task-${task.id}`}
