@@ -154,6 +154,9 @@ export default function Canvas() {
   const [taskBeingEdited, setTaskBeingEdited] = useState<Task | null>(null);
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDescription, setEditTaskDescription] = useState("");
+  
+  // Task expansion states (for showing description)
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [newSectionName, setNewSectionName] = useState("");
   
   // Form State
@@ -479,16 +482,13 @@ export default function Canvas() {
     },
     onSuccess: (updatedIdea: Idea, variables) => {
       // Only skip invalidation for position updates to prevent snap-back
-      if (!('groupId' in variables.updates)) {
-        return; // Skip invalidation for position updates (canvasX, canvasY)
+      const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
+      if (isPositionUpdate && Object.keys(variables.updates).length <= 2) {
+        return; // Skip invalidation for pure position updates only
       }
-      // For group assignments/removals, update the local cache immediately
-      queryClient.setQueryData(['/api/ideas'], (oldData: Idea[] | undefined) => {
-        if (!oldData) return [updatedIdea];
-        return oldData.map(idea => 
-          idea.id === variables.id ? { ...idea, ...variables.updates } : idea
-        );
-      });
+      // For all other updates (group, title, description, etc.), invalidate queries
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
     },
     onError: (error) => {
       console.error('Failed to update idea:', error);
@@ -1125,6 +1125,15 @@ export default function Canvas() {
     setEditingTaskTitle(task.title);
   };
   
+  // Toggle task expansion to show description
+  const toggleTaskExpansion = (task: Task) => {
+    if (expandedTaskId === task.id) {
+      setExpandedTaskId(null);
+    } else {
+      setExpandedTaskId(task.id);
+    }
+  };
+  
   // Open task edit dialog with linked idea data
   const openTaskEditDialog = (task: Task) => {
     setTaskBeingEdited(task);
@@ -1560,16 +1569,35 @@ export default function Canvas() {
           </div>
         ) : (
           <>
-            <div
-              className={`flex-1 cursor-pointer ${
-                task.completed 
-                  ? 'line-through text-gray-500' 
-                  : 'text-gray-900'
-              }`}
-              onClick={() => startEditingTask(task)}
-              data-testid={`text-task-${task.id}`}
-            >
-              {task.title}
+            <div className="flex-1">
+              <div
+                className={`cursor-pointer ${
+                  task.completed 
+                    ? 'line-through text-gray-500' 
+                    : 'text-gray-900'
+                }`}
+                onClick={() => toggleTaskExpansion(task)}
+                data-testid={`text-task-${task.id}`}
+              >
+                <div className="flex items-center">
+                  <span>{task.title}</span>
+                  {task.ideaId && (
+                    <ChevronDown className={`ml-2 w-3 h-3 transition-transform ${
+                      expandedTaskId === task.id ? 'rotate-180' : ''
+                    }`} />
+                  )}
+                </div>
+              </div>
+              
+              {/* Expandable description area */}
+              {expandedTaskId === task.id && task.ideaId && (
+                <div className="mt-2 p-2 bg-gray-50 rounded text-sm text-gray-600 border-l-2 border-blue-200">
+                  {(() => {
+                    const linkedIdea = ideas.find(idea => idea.id === task.ideaId);
+                    return linkedIdea?.description || "No description available";
+                  })()}
+                </div>
+              )}
             </div>
             
             {/* Three-dot menu */}
