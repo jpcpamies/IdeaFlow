@@ -887,8 +887,12 @@ export default function Canvas() {
       return response.json();
     },
     onSuccess: () => {
+      // More comprehensive invalidation to ensure UI updates
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      
+      // Force refetch to ensure order changes are visible immediately
+      queryClient.refetchQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
     }
   });
 
