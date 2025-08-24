@@ -60,7 +60,9 @@ import {
   Undo,
   CheckSquare,
   RefreshCw,
-  LogOut
+  LogOut,
+  Scatter,
+  Group
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea, TodoList, InsertTodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
@@ -213,6 +215,114 @@ export default function Canvas() {
   // Animation frame ref for smooth dragging
   const animationFrameRef = useRef<number | null>(null);
   const dragStateRef = useRef<DragState>(dragState);
+  
+  // Performance tracking for drag smoothness
+  const dragPerformanceRef = useRef({
+    lastUpdateTime: 0,
+    velocityX: 0,
+    velocityY: 0,
+    smoothingFactor: 0.8,
+    targetFPS: 60
+  });
+  
+  // Position update debouncing and retry logic
+  const positionUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const positionUpdateRetriesRef = useRef<Map<string, number>>(new Map());
+  const pendingPositionUpdatesRef = useRef<Map<string, {x: number, y: number, timestamp: number}>>(new Map());
+  const activePositionUpdatesRef = useRef<Set<string>>(new Set());
+
+  // Position validation function
+  const validatePosition = useCallback((x: number, y: number): { x: number, y: number, isValid: boolean } => {
+    // Basic bounds checking
+    const minX = 0;
+    const minY = 0;
+    const maxX = 5000; // Maximum canvas width
+    const maxY = 5000; // Maximum canvas height
+    
+    // Ensure positions are integers to prevent drift
+    const validX = Math.max(minX, Math.min(maxX, Math.round(x)));
+    const validY = Math.max(minY, Math.min(maxY, Math.round(y)));
+    
+    const isValid = (
+      Number.isInteger(validX) && 
+      Number.isInteger(validY) &&
+      validX >= minX && validX <= maxX &&
+      validY >= minY && validY <= maxY
+    );
+    
+    return { x: validX, y: validY, isValid };
+  }, []);
+
+  // Debounced position update function with validation
+  const debouncedPositionUpdate = useCallback((cardId: string, x: number, y: number) => {
+    // Validate positions before processing
+    const validation = validatePosition(x, y);
+    if (!validation.isValid) {
+      console.warn(`Invalid position for card ${cardId}: (${x}, ${y}) - corrected to (${validation.x}, ${validation.y})`);
+    }
+    
+    // Prevent concurrent updates for the same card
+    if (activePositionUpdatesRef.current.has(cardId)) {
+      console.log(`Skipping position update for ${cardId} - update already in progress`);
+      return;
+    }
+    
+    // Store the validated position update with timestamp
+    pendingPositionUpdatesRef.current.set(cardId, { 
+      x: validation.x, 
+      y: validation.y, 
+      timestamp: Date.now() 
+    });
+    
+    // Clear existing timeout
+    if (positionUpdateTimeoutRef.current) {
+      clearTimeout(positionUpdateTimeoutRef.current);
+    }
+    
+    // Set new timeout for batch update
+    positionUpdateTimeoutRef.current = setTimeout(() => {
+      // Process all pending updates
+      const updates = Array.from(pendingPositionUpdatesRef.current.entries());
+      pendingPositionUpdatesRef.current.clear();
+      
+      updates.forEach(([ideaId, position]) => {
+        // Skip if already updating
+        if (activePositionUpdatesRef.current.has(ideaId)) {
+          return;
+        }
+        
+        // Re-validate position before database save (in case data got corrupted)
+        const finalValidation = validatePosition(position.x, position.y);
+        if (!finalValidation.isValid) {
+          console.error(`Position validation failed for card ${ideaId} during save: (${position.x}, ${position.y})`);
+          return; // Skip invalid updates
+        }
+        
+        // Mark as active
+        activePositionUpdatesRef.current.add(ideaId);
+        
+        // Audit log for position change
+        const currentIdea = ideas.find(idea => idea.id === ideaId);
+        if (currentIdea) {
+          console.log(`Position Update Audit [${ideaId}]: (${currentIdea.canvasX}, ${currentIdea.canvasY}) → (${finalValidation.x}, ${finalValidation.y}) at ${new Date().toISOString()}`);
+        }
+        
+        updateIdeaMutation.mutate({
+          id: ideaId,
+          updates: { canvasX: finalValidation.x, canvasY: finalValidation.y }
+        });
+      });
+    }, 300); // 300ms debounce
+  }, [updateIdeaMutation, validatePosition]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (positionUpdateTimeoutRef.current) {
+        clearTimeout(positionUpdateTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // API Queries - filtered by project  
   const { data: ideas = [], isLoading: ideasLoading, error: ideasError, isError: hasIdeasError } = useQuery({
@@ -411,6 +521,167 @@ export default function Canvas() {
     console.log('=== FIT TO CANVAS COMPLETE ===');
   };
 
+  // Disperse Ideas - spread overlapping cards to prevent clustering
+  const disperseIdeas = () => {
+    console.log('=== DISPERSE IDEAS OPERATION ===');
+    const targetIdeas = selectedCards.length > 0 
+      ? ideas.filter(idea => selectedCards.includes(idea.id))
+      : filteredIdeas;
+    
+    if (targetIdeas.length === 0) {
+      console.log('No ideas to disperse');
+      return;
+    }
+
+    console.log(`Dispersing ${targetIdeas.length} ideas`);
+    
+    // Calculate canvas bounds for distribution
+    const canvas = canvasRef.current;
+    const canvasWidth = canvas ? canvas.clientWidth * 0.8 : 1200; // 80% of canvas width
+    const canvasHeight = canvas ? canvas.clientHeight * 0.8 : 800; // 80% of canvas height
+    const cardSpacing = 350; // Minimum spacing between cards
+    
+    // Create grid-based dispersion pattern
+    const cols = Math.ceil(Math.sqrt(targetIdeas.length * (canvasWidth / canvasHeight)));
+    const rows = Math.ceil(targetIdeas.length / cols);
+    
+    const cellWidth = canvasWidth / cols;
+    const cellHeight = canvasHeight / rows;
+    
+    console.log(`Grid layout: ${cols} cols x ${rows} rows`);
+    console.log(`Cell size: ${cellWidth} x ${cellHeight}`);
+    
+    // Apply dispersed positions
+    targetIdeas.forEach((idea, index) => {
+      const row = Math.floor(index / cols);
+      const col = index % cols;
+      
+      // Calculate base position in grid
+      const baseX = col * cellWidth + cellWidth / 2 - 160; // Center in cell (160 = half card width)
+      const baseY = row * cellHeight + cellHeight / 2 - 100; // Center in cell (100 = half card height)
+      
+      // Add small random offset to avoid perfect grid look
+      const randomOffsetX = (Math.random() - 0.5) * 80;
+      const randomOffsetY = (Math.random() - 0.5) * 60;
+      
+      const proposedX = Math.max(0, Math.round(baseX + randomOffsetX));
+      const proposedY = Math.max(0, Math.round(baseY + randomOffsetY));
+      
+      // Validate positions using the validation function
+      const validation = validatePosition(proposedX, proposedY);
+      const newX = validation.x;
+      const newY = validation.y;
+      
+      console.log(`Idea ${idea.id}: ${idea.canvasX},${idea.canvasY} → ${newX},${newY}`);
+      
+      // Update position immediately in UI
+      const element = document.querySelector(`[data-idea-id="${idea.id}"]`) as HTMLElement;
+      if (element) {
+        element.style.left = `${newX}px`;
+        element.style.top = `${newY}px`;
+      }
+      
+      // Update local state immediately
+      const ideaIndex = ideas.findIndex(i => i.id === idea.id);
+      if (ideaIndex !== -1) {
+        const updatedIdeas = [...ideas];
+        updatedIdeas[ideaIndex] = { 
+          ...updatedIdeas[ideaIndex], 
+          canvasX: newX, 
+          canvasY: newY 
+        };
+        queryClient.setQueryData(['/api/ideas', { projectId }], updatedIdeas);
+      }
+      
+      // Save to database
+      debouncedPositionUpdate(idea.id, newX, newY);
+    });
+    
+    console.log('=== DISPERSE IDEAS COMPLETE ===');
+  };
+
+  // Group Ideas - cluster cards of same group/color together
+  const groupIdeas = () => {
+    console.log('=== GROUP IDEAS OPERATION ===');
+    const targetIdeas = selectedCards.length > 0 
+      ? ideas.filter(idea => selectedCards.includes(idea.id))
+      : filteredIdeas;
+    
+    if (targetIdeas.length === 0) {
+      console.log('No ideas to group');
+      return;
+    }
+
+    // Group ideas by color/group
+    const ideasByGroup = targetIdeas.reduce((acc, idea) => {
+      const group = groups.find(g => g.id === idea.groupId);
+      const color = group ? group.color : idea.color;
+      
+      if (!acc[color]) acc[color] = [];
+      acc[color].push(idea);
+      return acc;
+    }, {} as Record<string, Idea[]>);
+
+    console.log(`Grouping ${targetIdeas.length} ideas into ${Object.keys(ideasByGroup).length} color groups`);
+    
+    // Position each group in a cluster
+    let groupIndex = 0;
+    const groupSpacing = 400; // Space between different color groups
+    const cardSpacing = 25; // Small spacing between cards in same group
+    
+    Object.entries(ideasByGroup).forEach(([color, groupIdeas]) => {
+      // Calculate cluster center position
+      const cols = Math.ceil(Math.sqrt(Object.keys(ideasByGroup).length));
+      const row = Math.floor(groupIndex / cols);
+      const col = groupIndex % cols;
+      
+      const centerX = 200 + col * groupSpacing;
+      const centerY = 200 + row * groupSpacing;
+      
+      console.log(`Group ${color}: ${groupIdeas.length} ideas at cluster center (${centerX}, ${centerY})`);
+      
+      // Arrange cards in a tight cluster around the center
+      groupIdeas.forEach((idea, cardIndex) => {
+        const angle = (cardIndex / groupIdeas.length) * 2 * Math.PI;
+        const radius = Math.min(50, cardIndex * 8); // Spiral outward for larger groups
+        
+        const proposedX = Math.max(0, Math.round(centerX + radius * Math.cos(angle)));
+        const proposedY = Math.max(0, Math.round(centerY + radius * Math.sin(angle)));
+        
+        // Validate positions using the validation function
+        const validation = validatePosition(proposedX, proposedY);
+        const newX = validation.x;
+        const newY = validation.y;
+        
+        // Update position immediately in UI
+        const element = document.querySelector(`[data-idea-id="${idea.id}"]`) as HTMLElement;
+        if (element) {
+          element.style.left = `${newX}px`;
+          element.style.top = `${newY}px`;
+        }
+        
+        // Update local state immediately
+        const ideaIndex = ideas.findIndex(i => i.id === idea.id);
+        if (ideaIndex !== -1) {
+          const updatedIdeas = [...ideas];
+          updatedIdeas[ideaIndex] = { 
+            ...updatedIdeas[ideaIndex], 
+            canvasX: newX, 
+            canvasY: newY 
+          };
+          queryClient.setQueryData(['/api/ideas', { projectId }], updatedIdeas);
+        }
+        
+        // Save to database
+        debouncedPositionUpdate(idea.id, newX, newY);
+      });
+      
+      groupIndex++;
+    });
+    
+    console.log('=== GROUP IDEAS COMPLETE ===');
+  };
+
   // Debug logging (remove in production)
   // console.log('Ideas data:', ideas);
   // console.log('Groups data:', groups);
@@ -518,20 +789,95 @@ export default function Canvas() {
   const updateIdeaMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string, updates: Partial<Idea> }) => {
       const res = await apiRequest('PATCH', `/api/ideas/${id}`, updates);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
       return await res.json();
     },
     onSuccess: (updatedIdea: Idea, variables) => {
-      // Only skip invalidation for position updates to prevent snap-back
+      // Clear retry count and active update status on successful update
       const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
+      if (isPositionUpdate) {
+        positionUpdateRetriesRef.current.delete(variables.id);
+        activePositionUpdatesRef.current.delete(variables.id);
+      }
+      
+      // Only skip invalidation for position updates to prevent snap-back
       if (isPositionUpdate && Object.keys(variables.updates).length <= 2) {
         return; // Skip invalidation for pure position updates only
       }
+      
       // For all other updates (group, title, description, etc.), invalidate queries
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
     },
-    onError: (error) => {
+    onError: (error, variables) => {
       console.error('Failed to update idea:', error);
+      
+      // Handle position update failures with retry logic
+      const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
+      if (isPositionUpdate) {
+        const retryCount = positionUpdateRetriesRef.current.get(variables.id) || 0;
+        const maxRetries = 3;
+        
+        if (retryCount < maxRetries) {
+          positionUpdateRetriesRef.current.set(variables.id, retryCount + 1);
+          console.log(`Retrying position update for idea ${variables.id}, attempt ${retryCount + 1}/${maxRetries}`);
+          
+          // Retry with exponential backoff
+          setTimeout(() => {
+            updateIdeaMutation.mutate(variables);
+          }, Math.pow(2, retryCount) * 1000);
+        } else {
+          // Max retries exceeded - rollback position in UI
+          console.error(`Position update failed after ${maxRetries} retries for idea ${variables.id}`);
+          
+          // Find the original idea and restore its position
+          const originalIdea = ideas.find(idea => idea.id === variables.id);
+          if (originalIdea) {
+            // Rollback UI to original position
+            const element = document.querySelector(`[data-idea-id="${variables.id}"]`) as HTMLElement;
+            if (element) {
+              element.style.left = `${originalIdea.canvasX}px`;
+              element.style.top = `${originalIdea.canvasY}px`;
+            }
+            
+            // Update query cache to original position
+            const currentIdeas = queryClient.getQueryData(['/api/ideas', { projectId }]) as Idea[];
+            if (currentIdeas) {
+              const updatedIdeas = currentIdeas.map(idea => 
+                idea.id === variables.id 
+                  ? { ...idea, canvasX: originalIdea.canvasX, canvasY: originalIdea.canvasY }
+                  : idea
+              );
+              queryClient.setQueryData(['/api/ideas', { projectId }], updatedIdeas);
+              
+              // Also update the generic ideas query to maintain consistency
+              const genericIdeas = queryClient.getQueryData(['/api/ideas']) as Idea[];
+              if (genericIdeas) {
+                const updatedGenericIdeas = genericIdeas.map(idea => 
+                  idea.id === variables.id 
+                    ? { ...idea, canvasX: originalIdea.canvasX, canvasY: originalIdea.canvasY }
+                    : idea
+                );
+                queryClient.setQueryData(['/api/ideas'], updatedGenericIdeas);
+              }
+            }
+          }
+          
+          positionUpdateRetriesRef.current.delete(variables.id);
+          activePositionUpdatesRef.current.delete(variables.id);
+          alert('Failed to save card position. Position has been restored.');
+        }
+      } else {
+        // Non-position updates - show generic error
+        alert('Failed to update idea: ' + error.message);
+      }
+      
+      // Always clear active status on error to prevent permanent locks
+      if (activePositionUpdatesRef.current.has(variables.id)) {
+        activePositionUpdatesRef.current.delete(variables.id);
+      }
     }
   });
 
@@ -2246,23 +2592,61 @@ export default function Canvas() {
     const currentDragState = dragStateRef.current;
     if (!currentDragState.isDragging) return;
     
+    const currentTime = performance.now();
+    const deltaTime = currentTime - dragPerformanceRef.current.lastUpdateTime;
+    
+    // Throttle updates to maintain 60 FPS for smoother performance
+    if (deltaTime < 1000 / dragPerformanceRef.current.targetFPS) {
+      return;
+    }
+    
     // Calculate delta with consistent rounding
     const deltaX = Math.round(mouseX - currentDragState.startPos.x);
     const deltaY = Math.round(mouseY - currentDragState.startPos.y);
+    
+    // Calculate velocity for smooth momentum (used for potential future enhancements)
+    if (dragPerformanceRef.current.lastUpdateTime > 0) {
+      const prevVelX = dragPerformanceRef.current.velocityX;
+      const prevVelY = dragPerformanceRef.current.velocityY;
+      const newVelX = deltaX / (deltaTime || 1);
+      const newVelY = deltaY / (deltaTime || 1);
+      
+      // Apply smoothing to prevent jerky movements
+      dragPerformanceRef.current.velocityX = prevVelX * dragPerformanceRef.current.smoothingFactor + 
+                                            newVelX * (1 - dragPerformanceRef.current.smoothingFactor);
+      dragPerformanceRef.current.velocityY = prevVelY * dragPerformanceRef.current.smoothingFactor + 
+                                            newVelY * (1 - dragPerformanceRef.current.smoothingFactor);
+    }
+    
+    dragPerformanceRef.current.lastUpdateTime = currentTime;
     
     // Update positions using consistent coordinate calculation
     Object.entries(currentDragState.dragElements).forEach(([cardId, element]) => {
       const initialPos = currentDragState.initialPositions[cardId];
       if (initialPos && element) {
-        // Calculate new position with proper bounds checking
-        const newX = Math.max(0, Math.round(initialPos.x + deltaX));
-        const newY = Math.max(0, Math.round(initialPos.y + deltaY));
+        // Calculate new position with enhanced bounds checking
+        const cardWidth = element.offsetWidth || 320; // Default card width
+        const cardHeight = element.offsetHeight || 200; // Default card height
+        const canvas = canvasRef.current;
+        const maxX = canvas ? (canvas.scrollWidth - cardWidth) : 2000;
+        const maxY = canvas ? (canvas.scrollHeight - cardHeight) : 2000;
+        
+        const newX = Math.max(0, Math.min(maxX, Math.round(initialPos.x + deltaX)));
+        const newY = Math.max(0, Math.min(maxY, Math.round(initialPos.y + deltaY)));
         
         // Update current positions for final save
         currentDragState.currentPositions[cardId] = { x: newX, y: newY };
         
+        // Enhanced visual feedback with smooth scaling based on movement speed
+        const velocityMagnitude = Math.sqrt(
+          dragPerformanceRef.current.velocityX ** 2 + 
+          dragPerformanceRef.current.velocityY ** 2
+        );
+        const dynamicScale = Math.min(1.05, 1.02 + velocityMagnitude * 0.001);
+        const dynamicRotation = Math.min(3, 2 + velocityMagnitude * 0.01);
+        
         // Use transform with exact pixel values to prevent sub-pixel rendering
-        element.style.transform = `translate(${Math.round(deltaX)}px, ${Math.round(deltaY)}px) rotate(2deg) scale(1.02)`;
+        element.style.transform = `translate(${Math.round(deltaX)}px, ${Math.round(deltaY)}px) rotate(${dynamicRotation}deg) scale(${dynamicScale})`;
       }
     });
   };
@@ -2382,14 +2766,11 @@ export default function Canvas() {
             canvasX: finalX, 
             canvasY: finalY 
           };
-          queryClient.setQueryData(['/api/ideas'], updatedIdeas);
+          queryClient.setQueryData(['/api/ideas', { projectId }], updatedIdeas);
         }
 
-        // Save to database with exact integer positions (prevents drift accumulation)
-        updateIdeaMutation.mutate({
-          id: cardId,
-          updates: { canvasX: finalX, canvasY: finalY }
-        });
+        // Save to database with debounced update (prevents spam and handles rapid movements)
+        debouncedPositionUpdate(cardId, finalX, finalY);
       }
     });
     
@@ -3037,6 +3418,36 @@ export default function Canvas() {
             >
               <Maximize2 className="w-4 h-4" />
             </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={(e) => {
+                console.log('Group Ideas button clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                groupIdeas();
+              }}
+              disabled={filteredIdeas.length === 0}
+              title="Group ideas by color"
+              data-testid="button-group-ideas"
+            >
+              <Group className="w-4 h-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={(e) => {
+                console.log('Disperse Ideas button clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                disperseIdeas();
+              }}
+              disabled={filteredIdeas.length === 0}
+              title="Disperse overlapping ideas"
+              data-testid="button-disperse-ideas"
+            >
+              <Scatter className="w-4 h-4" />
+            </Button>
           </div>
 
           {/* Multi-Selection Counter */}
@@ -3113,7 +3524,8 @@ export default function Canvas() {
                 <Card 
                   key={idea.id}
                   data-card-id={idea.id}
-                  className={`absolute w-64 shadow-md hover:shadow-lg transition-all cursor-pointer ${
+                  data-idea-id={idea.id}
+                  className={`absolute w-64 shadow-md hover:shadow-lg transition-all duration-200 ease-out cursor-pointer ${
                     isSelected 
                       ? 'border-4 border-blue-500 shadow-lg shadow-blue-500/30' 
                       : 'border-2 border-gray-200 hover:border-gray-300'
@@ -3123,9 +3535,13 @@ export default function Canvas() {
                     top: Math.round(idea.canvasY),
                     backgroundColor: cardColor,
                     cursor: dragState.isDragging ? 'grabbing' : 'pointer',
-                    transition: 'background-color 0.2s ease',
+                    transition: isSelected 
+                      ? 'all 0.2s ease-out, box-shadow 0.15s ease-out, border 0.1s ease-out' 
+                      : 'all 0.2s ease-out, border 0.15s ease-out, box-shadow 0.1s ease-out',
+                    transform: isSelected && !dragState.isDragging ? 'scale(1.02)' : 'scale(1)',
+                    zIndex: isSelected ? 10 : 1,
                     ...(isSelected && {
-                      boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.3), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                      boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.4), 0 12px 20px -5px rgba(0, 0, 0, 0.15), 0 0 15px rgba(59, 130, 246, 0.2)'
                     })
                   }}
                   onClick={(e) => handleCardClick(idea.id, e)}
