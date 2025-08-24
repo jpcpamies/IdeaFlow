@@ -157,6 +157,10 @@ export default function Canvas() {
   
   // Task expansion states (for showing description)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  
+  // Project name editing states
+  const [isEditingProjectName, setIsEditingProjectName] = useState(false);
+  const [editingProjectName, setEditingProjectName] = useState("");
   const [newSectionName, setNewSectionName] = useState("");
   
   // Form State
@@ -1134,6 +1138,26 @@ export default function Canvas() {
     }
   };
   
+  // Project name editing functions
+  const startEditingProjectName = () => {
+    setEditingProjectName(currentProject?.name || "");
+    setIsEditingProjectName(true);
+  };
+  
+  const cancelEditingProjectName = () => {
+    setIsEditingProjectName(false);
+    setEditingProjectName("");
+  };
+  
+  const saveProjectName = () => {
+    if (!editingProjectName.trim() || !projectId) return;
+    
+    updateProjectMutation.mutate({
+      id: projectId,
+      updates: { name: editingProjectName.trim() }
+    });
+  };
+  
   // Open task edit dialog with linked idea data
   const openTaskEditDialog = (task: Task) => {
     setTaskBeingEdited(task);
@@ -1190,6 +1214,29 @@ export default function Canvas() {
       deleteTaskMutation.mutate(task.id);
     }
   };
+  
+  // Update project mutation
+  const updateProjectMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Project> }) => {
+      const response = await apiRequest('PATCH', `/api/projects/${id}`, updates);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update project');
+      }
+      return response.json();
+    },
+    onSuccess: (updatedProject) => {
+      console.log('Project updated successfully:', updatedProject);
+      queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/projects'] });
+      setIsEditingProjectName(false);
+      setEditingProjectName("");
+    },
+    onError: (error) => {
+      console.error('Failed to update project:', error);
+      alert('Failed to update project name: ' + error.message);
+    }
+  });
 
   const saveTaskEdit = () => {
     if (!editingTaskId || !editingTaskTitle.trim()) return;
@@ -2436,9 +2483,53 @@ export default function Canvas() {
           <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
             <Palette className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">
-            {projectLoading ? 'Loading...' : (currentProject as any)?.name || 'Brain Storm to ToDo List'}
-          </h1>
+          {isEditingProjectName ? (
+            <div className="flex items-center space-x-2">
+              <Input
+                value={editingProjectName}
+                onChange={(e) => setEditingProjectName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveProjectName();
+                  if (e.key === 'Escape') cancelEditingProjectName();
+                }}
+                className="text-xl font-bold h-8 px-2"
+                autoFocus
+                data-testid="input-edit-project-name"
+              />
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={saveProjectName}
+                disabled={!editingProjectName.trim() || updateProjectMutation.isPending}
+                data-testid="button-save-project-name"
+              >
+                <Check className="w-4 h-4" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={cancelEditingProjectName}
+                data-testid="button-cancel-project-name"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center group">
+              <h1 
+                className="text-xl font-bold text-gray-900 cursor-pointer hover:text-blue-600 transition-colors"
+                onClick={startEditingProjectName}
+                data-testid="project-name-header"
+              >
+                {projectLoading ? 'Loading...' : (currentProject as any)?.name || 'Brain Storm to ToDo List'}
+              </h1>
+              <Edit2 
+                className="w-4 h-4 ml-2 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer hover:text-blue-600"
+                onClick={startEditingProjectName}
+                data-testid="edit-project-name-icon"
+              />
+            </div>
+          )}
         </div>
         
         <div className="flex items-center space-x-4">
