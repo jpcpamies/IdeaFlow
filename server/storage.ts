@@ -53,6 +53,7 @@ export interface IStorage {
   createGroup(group: InsertGroup): Promise<Group>;
   updateGroup(id: string, updates: Partial<InsertGroup>): Promise<Group>;
   deleteGroup(id: string): Promise<void>;
+  removeGroupFromIdeas(groupId: string): Promise<void>;
   
   // TodoList operations
   getUserTodoLists(userId: string): Promise<TodoList[]>;
@@ -253,6 +254,13 @@ export class DatabaseStorage implements IStorage {
 
   async deleteGroup(id: string): Promise<void> {
     await db.delete(groups).where(eq(groups.id, id));
+  }
+
+  async removeGroupFromIdeas(groupId: string): Promise<void> {
+    await db
+      .update(ideas)
+      .set({ groupId: null })
+      .where(eq(ideas.groupId, groupId));
   }
 
   // TodoList operations

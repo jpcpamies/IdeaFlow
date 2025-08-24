@@ -38,7 +38,8 @@ import {
   Users,
   Edit,
   Trash2,
-  ArrowLeft
+  ArrowLeft,
+  MoreHorizontal
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea } from "@shared/schema";
@@ -90,6 +91,8 @@ export default function Canvas() {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [isGroupActionsModalOpen, setIsGroupActionsModalOpen] = useState(false);
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null); // null = "All Ideas"
+  const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   
   // Form State
   const [newIdeaTitle, setNewIdeaTitle] = useState("");
@@ -118,6 +121,14 @@ export default function Canvas() {
   const { data: groups = [] } = useQuery({
     queryKey: ['/api/groups'],
   }) as { data: Group[] };
+
+  // Filter ideas based on selected group
+  const filteredIdeas = selectedFilter 
+    ? ideas.filter(idea => idea.groupId === selectedFilter)
+    : ideas;
+
+  console.log('Current filter:', selectedFilter);
+  console.log('Filtered ideas:', filteredIdeas.length, 'of', ideas.length);
 
   // Debug logging (remove in production)
   // console.log('Ideas data:', ideas);
@@ -171,6 +182,38 @@ export default function Canvas() {
     },
     onError: (error) => {
       console.error('Failed to create group:', error);
+    }
+  });
+
+  const updateGroupMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string, updates: Partial<Group> }) => {
+      const res = await apiRequest('PATCH', `/api/groups/${id}`, updates);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      setEditingGroup(null);
+    },
+    onError: (error) => {
+      console.error('Failed to update group:', error);
+    }
+  });
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest('DELETE', `/api/groups/${id}`);
+      return await res.json();
+    },
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      // Reset filter if deleted group was selected
+      if (selectedFilter === variables) {
+        setSelectedFilter(null);
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to delete group:', error);
     }
   });
 
@@ -260,9 +303,35 @@ export default function Canvas() {
     }
   };
 
+  // Filter functions
+  const handleFilterChange = (groupId: string | null) => {
+    setSelectedFilter(groupId);
+    setSelectedCards([]); // Clear selection when changing filter
+  };
+
   // Group action functions
   const handleGroupActions = () => {
     setIsGroupActionsModalOpen(true);
+  };
+
+  const handleEditGroup = (group: Group) => {
+    setEditingGroup(group);
+  };
+
+  const handleDeleteGroup = (groupId: string) => {
+    if (window.confirm('Are you sure you want to delete this group? All ideas in this group will become ungrouped.')) {
+      // Store the group ID for the success callback
+      (deleteGroupMutation as any).deletedGroupId = groupId;
+      deleteGroupMutation.mutate(groupId);
+    }
+  };
+
+  const handleSaveGroupEdit = (name: string, color: string) => {
+    if (!editingGroup) return;
+    updateGroupMutation.mutate({
+      id: editingGroup.id,
+      updates: { name, color }
+    });
   };
 
   const handleAssignToGroup = async (groupId: string) => {
@@ -747,39 +816,79 @@ export default function Canvas() {
           <div className="flex-1 overflow-y-auto p-4">
             <div className="mb-6">
               <h3 className="text-sm font-medium text-gray-900 mb-3">Groups</h3>
-              <div className="space-y-2">
-                {groups.map((group: Group) => (
-                  <div 
-                    key={group.id} 
-                    className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 cursor-pointer"
-                    data-testid={`group-${group.id}`}
-                  >
-                    <div className="flex items-center space-x-2">
+              <div className="space-y-1">
+                {/* All Ideas Filter */}
+                <div 
+                  className={`flex items-center px-3 py-2 rounded-lg cursor-pointer transition-colors ${
+                    selectedFilter === null 
+                      ? 'bg-blue-100 text-blue-900 font-medium' 
+                      : 'hover:bg-gray-100 text-gray-700'
+                  }`}
+                  onClick={() => handleFilterChange(null)}
+                  data-testid="filter-all-ideas"
+                >
+                  <div className="w-3 h-3 rounded-full mr-3 bg-gray-400" />
+                  <span className="text-sm flex-1">All Ideas</span>
+                  <span className="text-xs">
+                    ({ideas.length})
+                  </span>
+                </div>
+
+                {/* Individual Groups */}
+                {groups.map((group: Group) => {
+                  const groupIdeaCount = ideas.filter(idea => idea.groupId === group.id).length;
+                  const isSelected = selectedFilter === group.id;
+                  
+                  return (
+                    <div 
+                      key={group.id}
+                      className={`flex items-center px-3 py-2 rounded-lg cursor-pointer group transition-colors ${
+                        isSelected 
+                          ? 'bg-blue-100 text-blue-900 font-medium' 
+                          : 'hover:bg-gray-100 text-gray-700'
+                      }`}
+                      onClick={() => handleFilterChange(group.id)}
+                      data-testid={`filter-group-${group.id}`}
+                    >
                       <div 
-                        className="w-3 h-3 rounded-full" 
+                        className="w-3 h-3 rounded-full mr-3"
                         style={{ backgroundColor: group.color }}
                       />
-                      <span className="text-sm text-gray-700">{group.name}</span>
+                      <span className="text-sm flex-1">{group.name}</span>
+                      <span className="text-xs mr-2">({groupIdeaCount})</span>
+                      
+                      {/* Three-dot menu */}
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0 hover:bg-gray-200"
+                              onClick={(e) => e.stopPropagation()}
+                              data-testid={`group-menu-${group.id}`}
+                            >
+                              <MoreHorizontal className="w-3 h-3" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => handleEditGroup(group)}>
+                              <Edit className="mr-2 w-3 h-3" />
+                              Edit Group
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              onClick={() => handleDeleteGroup(group.id)}
+                              className="text-red-600"
+                            >
+                              <Trash2 className="mr-2 w-3 h-3" />
+                              Delete Group
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
-                    <Badge className="text-xs bg-gray-100 text-gray-600">
-                      {ideas.filter((idea: Idea) => idea.groupId === group.id).length}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Quick Actions</h3>
-              <div className="space-y-2">
-                <Button variant="ghost" className="w-full justify-start text-sm" data-testid="button-templates">
-                  <Bookmark className="mr-2 w-4 h-4" />
-                  Templates
-                </Button>
-                <Button variant="ghost" className="w-full justify-start text-sm" data-testid="button-recent-ideas">
-                  <Lightbulb className="mr-2 w-4 h-4" />
-                  Recent Ideas
-                </Button>
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -850,7 +959,7 @@ export default function Canvas() {
             onClick={handleCanvasClick}
           >
             {/* Idea Cards */}
-            {ideas.map((idea: Idea) => {
+            {filteredIdeas.map((idea: Idea) => {
               const isSelected = selectedCards.includes(idea.id);
               const group = groups.find((g: Group) => g.id === idea.groupId);
               const cardColor = group ? group.color : idea.color;
@@ -1162,6 +1271,53 @@ export default function Canvas() {
               Cancel
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Group Dialog */}
+      <Dialog open={!!editingGroup} onOpenChange={() => setEditingGroup(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Group</DialogTitle>
+            <DialogDescription>
+              Update the group name and color
+            </DialogDescription>
+          </DialogHeader>
+          {editingGroup && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Group Name</label>
+                <Input
+                  value={editingGroup.name}
+                  onChange={(e) => setEditingGroup({ ...editingGroup, name: e.target.value })}
+                  placeholder="Enter group name"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium">Color</label>
+                <div className="flex gap-2 mt-2">
+                  {['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'].map((color) => (
+                    <button
+                      key={color}
+                      className={`w-8 h-8 rounded-full border-2 ${
+                        editingGroup.color === color ? 'border-gray-800' : 'border-gray-300'
+                      }`}
+                      style={{ backgroundColor: color }}
+                      onClick={() => setEditingGroup({ ...editingGroup, color })}
+                    />
+                  ))}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingGroup(null)}>
+                  Cancel
+                </Button>
+                <Button onClick={() => handleSaveGroupEdit(editingGroup.name, editingGroup.color)}>
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

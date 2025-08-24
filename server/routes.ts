@@ -284,6 +284,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.patch('/api/groups/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const group = await storage.getGroup(req.params.id);
+      
+      if (!group || group.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      
+      const updates = insertGroupSchema.partial().parse(req.body);
+      const updatedGroup = await storage.updateGroup(req.params.id, updates);
+      res.json(updatedGroup);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      console.error("Error updating group:", error);
+      res.status(500).json({ message: "Failed to update group" });
+    }
+  });
+
+  app.delete('/api/groups/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const group = await storage.getGroup(req.params.id);
+      
+      if (!group || group.userId !== userId) {
+        return res.status(404).json({ message: "Group not found" });
+      }
+      
+      // Remove group from all ideas first
+      await storage.removeGroupFromIdeas(req.params.id);
+      await storage.deleteGroup(req.params.id);
+      res.json({ message: "Group deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting group:", error);
+      res.status(500).json({ message: "Failed to delete group" });
+    }
+  });
+
   // Stats route
   app.get('/api/stats', isAuthenticated, async (req: any, res) => {
     try {
