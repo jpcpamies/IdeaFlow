@@ -1,0 +1,43 @@
+Fix critical TodoList modal issues: drag-and-drop between sections, input field isolation, and canvas synchronization.
+
+TODOLIST MODAL FIXES:
+
+1. Drag-and-Drop Between Sections:
+   - Enable dragging tasks from one section to another
+   - Visual feedback during drag (placeholder line, section highlighting)
+   - Update task.section_id in database when dropped in new section
+   - Smooth animations for task movement
+   - Handle drag from "General Tasks" to custom sections and vice versa
+
+2. Fix Input Field Isolation:
+   - Each section's "Add a task..." input should be independent
+   - Text typed in one section must not appear in other sections
+   - Each input needs unique state management
+   - Clear input after task creation in that specific section
+   - Proper focus management between different section inputs
+
+3. Canvas-TodoList Synchronization:
+   - When task is created in TodoList modal, create corresponding idea card on canvas
+   - Position new canvas card near other cards of the same group
+   - New canvas card inherits group color and properties
+   - Maintain idea_id ↔ task relationship in database
+
+4. Bi-directional Updates:
+   - When canvas card is moved to different group, update corresponding task's section
+   - When canvas card is deleted, remove corresponding task from TodoList
+   - When task is deleted from TodoList, remove corresponding canvas card
+   - Real-time updates between canvas and TodoList views
+
+5. Database Operations:
+   - INSERT ideas table when task created in TodoList
+   - UPDATE tasks SET section_id WHERE id when dragged between sections
+   - DELETE CASCADE operations to maintain data consistency
+   - Proper foreign key relationships between ideas and tasks
+
+6. UI State Management:
+   - Refresh TodoList counts after changes
+   - Update canvas immediately after TodoList changes
+   - Handle concurrent edits gracefully
+   - Show loading states during sync operations
+
+CRITICAL: Tasks and canvas cards must stay perfectly synchronized. Changes in one view must immediately reflect in the other view with proper database persistence.

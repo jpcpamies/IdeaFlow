@@ -892,28 +892,37 @@ export default function Canvas() {
     );
   };
 
+  // Zoom constants
+  const ZOOM_MIN = 20;
+  const ZOOM_MAX = 500;
+  const ZOOM_STEP = 10;
+
   // Zoom functions
   const handleZoomIn = () => {
-    const newZoom = Math.min(zoomLevel + 25, 200);
+    const newZoom = Math.min(zoomLevel + ZOOM_STEP, ZOOM_MAX);
     setTargetZoomLevel(newZoom);
     smoothZoomTo(newZoom);
   };
 
   const handleZoomOut = () => {
-    const newZoom = Math.max(zoomLevel - 25, 50);
+    const newZoom = Math.max(zoomLevel - ZOOM_STEP, ZOOM_MIN);
     setTargetZoomLevel(newZoom);
     smoothZoomTo(newZoom);
   };
 
-  // Native zoom functions
+  // Clean, simple zoom animation
   const smoothZoomTo = (targetZoom: number, centerPoint?: { x: number; y: number }) => {
+    // Cancel any existing animation
     if (zoomAnimationRef.current) {
       cancelAnimationFrame(zoomAnimationRef.current);
     }
 
+    // Clamp target zoom to valid range
+    targetZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, targetZoom));
+
     const startZoom = zoomLevel;
     const startTime = performance.now();
-    const duration = 200; // 200ms animation
+    const duration = 150; // Faster, more responsive animation
 
     setIsZooming(true);
 
@@ -921,22 +930,32 @@ export default function Canvas() {
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / duration, 1);
       
-      // Easing function (easeOutCubic)
-      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      // Smooth easing (easeOutQuart for snappy feel)
+      const easeProgress = 1 - Math.pow(1 - progress, 4);
       
       const currentZoom = startZoom + (targetZoom - startZoom) * easeProgress;
       
-      if (centerPoint) {
-        // Calculate pan adjustment to keep the cursor position fixed during zoom
-        const zoomRatio = currentZoom / startZoom;
-        
-        // The pan needs to be adjusted so the point under the cursor doesn't move
-        // Formula: newPan = centerPoint - (centerPoint - oldPan) * zoomRatio
-        setPanState(prev => ({
-          ...prev,
-          x: centerPoint.x - (centerPoint.x - prev.x) * zoomRatio,
-          y: centerPoint.y - (centerPoint.y - prev.y) * zoomRatio
-        }));
+      // Handle cursor-centered zoom
+      if (centerPoint && startZoom !== currentZoom) {
+        const scale = currentZoom / startZoom;
+        const canvas = canvasRef.current;
+        if (canvas) {
+          const rect = canvas.getBoundingClientRect();
+          const centerX = centerPoint.x;
+          const centerY = centerPoint.y;
+          
+          // Calculate new pan to keep point under cursor
+          setPanState(prev => {
+            const newX = centerX - (centerX - prev.x) * scale;
+            const newY = centerY - (centerY - prev.y) * scale;
+            return {
+              ...prev,
+              x: newX,
+              y: newY,
+              lastPan: { x: newX, y: newY }
+            };
+          });
+        }
       }
       
       setZoomLevel(currentZoom);
@@ -946,113 +965,60 @@ export default function Canvas() {
       } else {
         setIsZooming(false);
         zoomAnimationRef.current = null;
+        setTargetZoomLevel(targetZoom);
       }
     };
 
     zoomAnimationRef.current = requestAnimationFrame(animate);
   };
 
+  // Simplified, robust wheel zoom handler
   const handleWheelZoom = (event: WheelEvent) => {
     event.preventDefault();
     
-    // Debounce rapid wheel events
+    // Throttle rapid wheel events for performance
     const now = performance.now();
     if (now - lastWheelEventRef.current < 16) { // ~60fps limit
       return;
     }
     lastWheelEventRef.current = now;
 
-    // Get canvas bounds for cursor position calculation
+    // Get cursor position relative to canvas
     const canvas = canvasRef.current;
     if (!canvas) return;
     
     const rect = canvas.getBoundingClientRect();
-    const cursorX = event.clientX - rect.left;
-    const cursorY = event.clientY - rect.top;
+    const centerPoint = {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    };
     
-    // Convert cursor position to canvas coordinates (accounting for current zoom and pan)
-    // The cursor position needs to be transformed to match the canvas coordinate system
-    const canvasX = cursorX / (zoomLevel / 100) - panState.x;
-    const canvasY = cursorY / (zoomLevel / 100) - panState.y;
-    
-    // Determine zoom direction and intensity
+    // Determine zoom delta based on input type
     let zoomDelta = 0;
     
-    // Detect trackpad vs mouse wheel
-    if (Math.abs(event.deltaY) < 10 && event.deltaMode === 0) {
-      // Trackpad: smaller, more frequent events
-      zoomDelta = -event.deltaY * 0.5;
+    // Smart detection: trackpad vs mouse wheel
+    if (Math.abs(event.deltaY) < 15 && event.deltaMode === 0) {
+      // Trackpad: smooth, precise control
+      zoomDelta = -event.deltaY * 0.8;
     } else {
-      // Mouse wheel: larger discrete events
-      zoomDelta = -event.deltaY * 2;
+      // Mouse wheel: discrete steps
+      zoomDelta = -event.deltaY * 0.3;
     }
     
-    // Calculate new zoom level with smooth constraints
-    let newZoom = zoomLevel + zoomDelta;
+    // Calculate new zoom level
+    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + zoomDelta));
     
-    // Apply constraints with visual feedback
-    const wasAtLimit = zoomLevel <= 50 || zoomLevel >= 200;
-    newZoom = Math.min(Math.max(newZoom, 50), 200);
-    
-    // If we're at a zoom limit, provide subtle visual feedback
-    if (newZoom === zoomLevel) {
-      if (!wasAtLimit) {
-        // Show brief visual indication that we've reached a limit
-        const canvas = canvasRef.current;
-        if (canvas) {
-          canvas.style.transition = 'opacity 0.1s ease';
-          canvas.style.opacity = '0.95';
-          setTimeout(() => {
-            canvas.style.opacity = '1';
-            canvas.style.transition = '';
-          }, 100);
-        }
-      }
-      return; // No change needed
+    // Only zoom if there's an actual change
+    if (Math.abs(newZoom - zoomLevel) < 0.1) {
+      return;
     }
     
     setTargetZoomLevel(newZoom);
-    
-    // Calculate the zoom center point for smooth zooming
-    // We want the point under the cursor to remain stationary during zoom
-    const centerPoint = {
-      x: cursorX,
-      y: cursorY
-    };
-    
     smoothZoomTo(newZoom, centerPoint);
   };
 
-  // Touch/Pointer events for trackpad gestures
-  const handlePointerDown = (event: React.PointerEvent) => {
-    // Only handle if it's not already being handled by pan/drag
-    if (event.pointerType === 'touch' && !panState.isPanning && !dragState.isDragging) {
-      // Store initial touch point for potential pinch gesture
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
-  };
-
-  const handleGestureStart = (event: any) => {
-    event.preventDefault();
-    setIsZooming(true);
-  };
-
-  const handleGestureChange = (event: any) => {
-    event.preventDefault();
-    
-    if (!isZooming) return;
-    
-    const scale = event.scale;
-    const newZoom = Math.min(Math.max(targetZoomLevel * scale, 50), 200);
-    
-    setZoomLevel(newZoom);
-    setTargetZoomLevel(newZoom);
-  };
-
-  const handleGestureEnd = (event: any) => {
-    event.preventDefault();
-    setIsZooming(false);
-  };
+  // Clean up old gesture handlers - wheel events handle all zoom interactions
+  // Simplified approach: rely on wheel events for all zoom functionality
 
   // Idea CRUD functions
   const handleCreateIdea = async () => {
@@ -1687,20 +1653,8 @@ export default function Canvas() {
     // Add wheel event listener for zoom
     canvas.addEventListener('wheel', handleWheelZoom, { passive: false });
 
-    // Add gesture event listeners for Safari/WebKit trackpad gestures
-    const handleGestureStartWrapper = (event: Event) => handleGestureStart(event);
-    const handleGestureChangeWrapper = (event: Event) => handleGestureChange(event);
-    const handleGestureEndWrapper = (event: Event) => handleGestureEnd(event);
-
-    canvas.addEventListener('gesturestart', handleGestureStartWrapper, { passive: false });
-    canvas.addEventListener('gesturechange', handleGestureChangeWrapper, { passive: false });
-    canvas.addEventListener('gestureend', handleGestureEndWrapper, { passive: false });
-
     return () => {
       canvas.removeEventListener('wheel', handleWheelZoom);
-      canvas.removeEventListener('gesturestart', handleGestureStartWrapper);
-      canvas.removeEventListener('gesturechange', handleGestureChangeWrapper);
-      canvas.removeEventListener('gestureend', handleGestureEndWrapper);
       
       // Cancel any ongoing zoom animation
       if (zoomAnimationRef.current) {
@@ -1708,7 +1662,7 @@ export default function Canvas() {
         zoomAnimationRef.current = null;
       }
     };
-  }, [handleWheelZoom, handleGestureStart, handleGestureChange, handleGestureEnd]);
+  }, [handleWheelZoom]);
 
   // Cleanup zoom animation on unmount
   useEffect(() => {
@@ -2081,11 +2035,11 @@ export default function Canvas() {
 
         {/* Center Canvas Area */}
         <main className="flex-1 relative bg-white overflow-hidden">
-          {/* Zoom-Responsive Dot Grid Background */}
+          {/* Zoom-Responsive Dot Grid Background - Subtle 1px dots */}
           <div 
             className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
-              backgroundImage: `radial-gradient(circle, rgba(156, 163, 175, 0.8) 2px, transparent 2px)`,
+              backgroundImage: `radial-gradient(circle, rgba(229, 231, 235, 0.6) 1px, transparent 1px)`,
               backgroundSize: `${24 * (zoomLevel / 100)}px ${24 * (zoomLevel / 100)}px`,
               backgroundPosition: `${panState.x}px ${panState.y}px`
             }}
@@ -2111,7 +2065,7 @@ export default function Canvas() {
               variant="ghost"
               size="sm"
               onClick={handleZoomOut}
-              disabled={zoomLevel <= 50}
+              disabled={zoomLevel <= ZOOM_MIN}
               data-testid="button-zoom-out"
             >
               <ZoomOut className="w-4 h-4" />
@@ -2123,7 +2077,7 @@ export default function Canvas() {
               variant="ghost"
               size="sm"
               onClick={handleZoomIn}
-              disabled={zoomLevel >= 200}
+              disabled={zoomLevel >= ZOOM_MAX}
               data-testid="button-zoom-in"
             >
               <ZoomIn className="w-4 h-4" />
@@ -2158,7 +2112,6 @@ export default function Canvas() {
             className={`absolute inset-0 overflow-hidden ${panState.isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
             onMouseDown={handleCanvasPanStart}
             onClick={handleCanvasClick}
-            onPointerDown={handlePointerDown}
             style={{ touchAction: 'none' }}
           >
             {/* Inner canvas with pan and zoom transforms */}
