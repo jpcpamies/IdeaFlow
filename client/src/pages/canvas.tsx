@@ -696,12 +696,7 @@ export default function Canvas() {
         console.log(`Canvas synchronized: Created idea ${ideaId} for task "${task.title}"`);
       }
       
-      // Clear the appropriate input field
-      if (variables.sectionId) {
-        setSectionInputs(prev => ({ ...prev, [variables.sectionId]: '' }));
-      } else {
-        setGeneralTaskInput('');
-      }
+      // Input field is already cleared in addNewTask for better UX
     }
   });
 
@@ -1188,6 +1183,13 @@ export default function Canvas() {
     if (!taskTitle?.trim() || !selectedTodoList) return;
 
     const maxOrder = Math.max(...todoListTasks.map(task => task.orderIndex || 0), 0);
+    
+    // Clear input immediately for better UX
+    if (sectionId) {
+      setSectionInputs(prev => ({ ...prev, [sectionId]: '' }));
+    } else {
+      setGeneralTaskInput('');
+    }
     
     createTaskMutation.mutate({
       todoListId: selectedTodoList.id,
@@ -3227,25 +3229,6 @@ export default function Canvas() {
                               ))}
                             </div>
 
-                            {/* Add New Task to Section */}
-                            <div className="flex space-x-2 pt-2 border-t border-gray-100">
-                              <Input
-                                placeholder="Add a task..."
-                                value={sectionInputs[section.id] || ''}
-                                onChange={(e) => handleSectionInputChange(section.id, e.target.value)}
-                                onKeyDown={(e) => handleSectionInputKeyDown(e, section.id)}
-                                className="flex-1 h-8"
-                                data-testid={`input-new-task-${section.id}`}
-                              />
-                              <Button
-                                size="sm"
-                                onClick={() => addNewTask(section.id)}
-                                disabled={!(sectionInputs[section.id] || '').trim()}
-                                data-testid={`button-add-task-${section.id}`}
-                              >
-                                <Plus className="w-4 h-4" />
-                              </Button>
-                            </div>
 
                             {/* Completed Tasks */}
                             {completedTasks.length > 0 && (
@@ -3295,7 +3278,10 @@ export default function Canvas() {
                             value={generalTaskInput}
                             onChange={(e) => setGeneralTaskInput(e.target.value)}
                             onKeyDown={(e) => {
-                              if (e.key === 'Enter') addNewTask();
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                addNewTask();
+                              }
                             }}
                             className="flex-1 h-8"
                             data-testid="input-new-general-task"
@@ -3332,7 +3318,15 @@ export default function Canvas() {
             </DndContext>
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="flex justify-between">
+            <Button 
+              variant="destructive" 
+              onClick={() => confirmDeleteTodoList(selectedTodoList!)}
+              data-testid="button-delete-todolist"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete TodoList
+            </Button>
             <Button variant="outline" onClick={closeTodoListModal} data-testid="button-close-todolist-modal">
               Close
             </Button>
