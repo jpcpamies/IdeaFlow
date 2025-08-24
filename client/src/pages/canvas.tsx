@@ -579,6 +579,8 @@ export default function Canvas() {
       console.log('TodoList created successfully:', todoList);
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', { projectId }] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      // Automatically open the tasks sidebar to show the new todo list
+      setIsRightSidebarOpen(true);
     },
     onError: (error) => {
       console.error('Failed to create TodoList:', error);
