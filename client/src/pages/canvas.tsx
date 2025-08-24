@@ -1531,7 +1531,7 @@ export default function Canvas() {
         className={`${isDragging ? 'z-50 shadow-2xl' : ''}`}
       >
         <DroppableSection sectionId={section.id}>
-          <div className="border rounded-lg p-4 bg-white">
+          <div className="group border rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
             {/* Section Header with drag handle */}
             <div className="flex items-center justify-between mb-3">
               {editingSectionId === section.id ? (
