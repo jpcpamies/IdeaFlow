@@ -1864,28 +1864,29 @@ export default function Canvas() {
     
     // Find a good position for the new card - center of current viewport
     const canvas = canvasRef.current?.parentElement;
-    let newX = Math.round(200);
-    let newY = Math.round(200);
+    let newX = 200;
+    let newY = 200;
     
     if (canvas) {
-      // Position in center of visible area
-      const centerX = Math.round((canvas.scrollLeft + canvas.clientWidth / 2) / (zoomLevel / 100));
-      const centerY = Math.round((canvas.scrollTop + canvas.clientHeight / 2) / (zoomLevel / 100));
+      // Position in center of visible area with consistent zoom calculation
+      const zoomFactor = zoomLevel / 100;
+      const centerX = Math.round((canvas.scrollLeft + canvas.clientWidth / 2) / zoomFactor);
+      const centerY = Math.round((canvas.scrollTop + canvas.clientHeight / 2) / zoomFactor);
       
-      // Check for overlaps and adjust if needed
-      const existingPositions = ideas.map((idea: Idea) => ({ x: idea.canvasX, y: idea.canvasY }));
+      // Check for overlaps and adjust if needed with consistent rounding
+      const existingPositions = ideas.map((idea: Idea) => ({ x: Math.round(idea.canvasX), y: Math.round(idea.canvasY) }));
       
       for (let i = 0; i < 20; i++) {
-        const testX = centerX - 120 + (i % 5) * 60;
-        const testY = centerY - 60 + Math.floor(i / 5) * 60;
+        const testX = Math.round(centerX - 120 + (i % 5) * 60);
+        const testY = Math.round(centerY - 60 + Math.floor(i / 5) * 60);
         
         const overlaps = existingPositions.some(pos => 
           Math.abs(pos.x - testX) < 200 && Math.abs(pos.y - testY) < 100
         );
         
         if (!overlaps) {
-          newX = Math.round(testX);
-          newY = Math.round(testY);
+          newX = testX;
+          newY = testY;
           break;
         }
       }
@@ -2181,14 +2182,16 @@ export default function Canvas() {
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     
-    const mouseX = (event.clientX - rect.left) / (zoomLevel / 100);
-    const mouseY = (event.clientY - rect.top) / (zoomLevel / 100);
+    // Use consistent zoom calculations and rounding
+    const zoomFactor = zoomLevel / 100;
+    const mouseX = Math.round((event.clientX - rect.left) / zoomFactor);
+    const mouseY = Math.round((event.clientY - rect.top) / zoomFactor);
     
-    // Get the card element to calculate offset
+    // Get the card element to calculate offset with consistent rounding
     const cardElement = event.currentTarget as HTMLElement;
     const cardRect = cardElement.getBoundingClientRect();
-    const offsetX = (event.clientX - cardRect.left) / (zoomLevel / 100);
-    const offsetY = (event.clientY - cardRect.top) / (zoomLevel / 100);
+    const offsetX = Math.round((event.clientX - cardRect.left) / zoomFactor);
+    const offsetY = Math.round((event.clientY - cardRect.top) / zoomFactor);
     
     // If clicking on an unselected card, select it
     if (!selectedCards.includes(cardId)) {
@@ -2205,9 +2208,17 @@ export default function Canvas() {
       const idea = ideas.find((i: Idea) => i.id === id);
       const element = document.querySelector(`[data-card-id="${id}"]`) as HTMLElement;
       if (idea && element) {
-        initialPositions[id] = { x: idea.canvasX, y: idea.canvasY };
-        currentPositions[id] = { x: idea.canvasX, y: idea.canvasY };
+        // Store positions as integers to prevent drift
+        const initialX = Math.round(idea.canvasX);
+        const initialY = Math.round(idea.canvasY);
+        
+        initialPositions[id] = { x: initialX, y: initialY };
+        currentPositions[id] = { x: initialX, y: initialY };
         dragElements[id] = element;
+        
+        // Store original position for consistent transform calculation
+        element.dataset.dragStartX = initialX.toString();
+        element.dataset.dragStartY = initialY.toString();
         
         // Apply initial drag styling with hardware acceleration
         element.style.transition = 'none';
@@ -2240,21 +2251,23 @@ export default function Canvas() {
     const currentDragState = dragStateRef.current;
     if (!currentDragState.isDragging) return;
     
-    const deltaX = mouseX - currentDragState.startPos.x;
-    const deltaY = mouseY - currentDragState.startPos.y;
+    // Calculate delta with consistent rounding
+    const deltaX = Math.round(mouseX - currentDragState.startPos.x);
+    const deltaY = Math.round(mouseY - currentDragState.startPos.y);
     
-    // Update positions using CSS transforms for better performance
+    // Update positions using consistent coordinate calculation
     Object.entries(currentDragState.dragElements).forEach(([cardId, element]) => {
       const initialPos = currentDragState.initialPositions[cardId];
       if (initialPos && element) {
-        const newX = Math.max(0, initialPos.x + deltaX);
-        const newY = Math.max(0, initialPos.y + deltaY);
+        // Calculate new position with proper bounds checking
+        const newX = Math.max(0, Math.round(initialPos.x + deltaX));
+        const newY = Math.max(0, Math.round(initialPos.y + deltaY));
         
         // Update current positions for final save
         currentDragState.currentPositions[cardId] = { x: newX, y: newY };
         
-        // Use transform for smooth hardware-accelerated movement
-        element.style.transform = `translate(${deltaX}px, ${deltaY}px) rotate(2deg) scale(1.02)`;
+        // Use transform with exact pixel values to prevent sub-pixel rendering
+        element.style.transform = `translate(${Math.round(deltaX)}px, ${Math.round(deltaY)}px) rotate(2deg) scale(1.02)`;
       }
     });
   };
@@ -2265,8 +2278,10 @@ export default function Canvas() {
     event.preventDefault();
     
     const rect = canvasRef.current.getBoundingClientRect();
-    const mouseX = (event.clientX - rect.left) / (zoomLevel / 100);
-    const mouseY = (event.clientY - rect.top) / (zoomLevel / 100);
+    // Use consistent zoom calculations with rounding
+    const zoomFactor = zoomLevel / 100;
+    const mouseX = Math.round((event.clientX - rect.left) / zoomFactor);
+    const mouseY = Math.round((event.clientY - rect.top) / zoomFactor);
     
     // Cancel previous animation frame
     if (animationFrameRef.current) {
@@ -2341,26 +2356,27 @@ export default function Canvas() {
     Object.entries(currentDragState.dragElements).forEach(([cardId, element]) => {
       const finalPos = currentDragState.currentPositions[cardId];
       if (element && finalPos) {
-        // Reset styles with smooth transition
-        element.style.transition = 'all 0.2s ease-out';
+        // Ensure final positions are integers to prevent sub-pixel drift
+        const finalX = Math.round(finalPos.x);
+        const finalY = Math.round(finalPos.y);
+        
+        // Remove data attributes used during drag
+        delete element.dataset.dragStartX;
+        delete element.dataset.dragStartY;
+        
+        // Reset styles with smooth transition - but avoid transform conflicts
+        element.style.transition = 'none'; // Prevent conflicts during position change
         element.style.willChange = 'auto';
         element.style.zIndex = '';
         element.style.cursor = 'pointer';
         element.style.userSelect = '';
         element.style.pointerEvents = '';
-        element.style.transform = '';
+        element.style.transform = ''; // Remove transform immediately
         element.style.filter = '';
         
-        // Update actual position
-        element.style.left = `${finalPos.x}px`;
-        element.style.top = `${finalPos.y}px`;
-        
-        // Clean up transition after animation
-        setTimeout(() => {
-          if (element) {
-            element.style.transition = '';
-          }
-        }, 200);
+        // Update actual position with exact integer values
+        element.style.left = `${finalX}px`;
+        element.style.top = `${finalY}px`;
         
         // Update local state immediately to prevent snap-back
         const ideaIndex = ideas.findIndex(idea => idea.id === cardId);
@@ -2368,16 +2384,16 @@ export default function Canvas() {
           const updatedIdeas = [...ideas];
           updatedIdeas[ideaIndex] = { 
             ...updatedIdeas[ideaIndex], 
-            canvasX: finalPos.x, 
-            canvasY: finalPos.y 
+            canvasX: finalX, 
+            canvasY: finalY 
           };
           queryClient.setQueryData(['/api/ideas'], updatedIdeas);
         }
 
-        // Save to database (only once per card)
+        // Save to database with exact integer positions (prevents drift accumulation)
         updateIdeaMutation.mutate({
           id: cardId,
-          updates: { canvasX: finalPos.x, canvasY: finalPos.y }
+          updates: { canvasX: finalX, canvasY: finalY }
         });
       }
     });
@@ -3081,8 +3097,8 @@ export default function Canvas() {
                       : 'border-2 border-gray-200 hover:border-gray-300'
                   }`}
                   style={{
-                    left: idea.canvasX,
-                    top: idea.canvasY,
+                    left: Math.round(idea.canvasX),
+                    top: Math.round(idea.canvasY),
                     backgroundColor: cardColor,
                     cursor: dragState.isDragging ? 'grabbing' : 'pointer',
                     transition: 'background-color 0.2s ease',
