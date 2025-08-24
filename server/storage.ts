@@ -39,6 +39,8 @@ export interface IStorage {
   
   // Task operations
   getProjectTasks(projectId: string): Promise<Task[]>;
+  getTask(id: string): Promise<Task | undefined>;
+  getTasksByIdeaId(ideaId: string): Promise<Task[]>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, updates: Partial<InsertTask>): Promise<Task>;
   deleteTask(id: string): Promise<void>;
@@ -147,6 +149,19 @@ export class DatabaseStorage implements IStorage {
     // For now, return empty array since tasks are now linked to todoLists
     // This maintains compatibility with existing project-based API
     return [];
+  }
+
+  async getTask(id: string): Promise<Task | undefined> {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
+  }
+
+  async getTasksByIdeaId(ideaId: string): Promise<Task[]> {
+    return await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.ideaId, ideaId))
+      .orderBy(tasks.createdAt);
   }
 
   async createTask(task: InsertTask): Promise<Task> {

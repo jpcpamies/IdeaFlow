@@ -197,8 +197,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/tasks/:id', isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user.claims.sub;
+      
+      // Get task details before deletion for bi-directional sync
+      const task = await storage.getTask(req.params.id);
+      if (!task) {
+        return res.status(404).json({ message: "Task not found" });
+      }
+      
+      // Verify user owns the task (through todoList ownership)
+      if (task.todoListId) {
+        const todoList = await storage.getTodoList(task.todoListId);
+        if (!todoList || todoList.userId !== userId) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      
+      // Bi-directional sync: Delete linked idea if it exists
+      if (task.ideaId) {
+        try {
+          const linkedIdea = await storage.getIdea(task.ideaId);
+          if (linkedIdea && linkedIdea.userId === userId) {
+            await storage.deleteIdea(task.ideaId);
+            console.log(`Deleted linked idea ${task.ideaId} for task ${req.params.id}`);
+          }
+        } catch (ideaError) {
+          console.error("Error deleting linked idea:", ideaError);
+          // Continue with task deletion even if idea deletion fails
+        }
+      }
+      
       await storage.deleteTask(req.params.id);
-      res.json({ message: "Task deleted successfully" });
+      res.json({ 
+        message: "Task and linked idea deleted successfully",
+        deletedTaskId: req.params.id,
+        deletedIdeaId: task.ideaId || null
+      });
     } catch (error) {
       console.error("Error deleting task:", error);
       res.status(500).json({ message: "Failed to delete task" });
@@ -289,8 +323,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Idea not found" });
       }
       
+      // Bi-directional sync: Find and delete any linked tasks
+      try {
+        const linkedTasks = await storage.getTasksByIdeaId(req.params.id);
+        for (const task of linkedTasks) {
+          await storage.deleteTask(task.id);
+          console.log(`Deleted linked task ${task.id} for idea ${req.params.id}`);
+        }
+      } catch (taskError) {
+        console.error("Error deleting linked tasks:", taskError);
+        // Continue with idea deletion even if task deletion fails
+      }
+      
       await storage.deleteIdea(req.params.id);
-      res.json({ message: "Idea deleted successfully" });
+      res.json({ 
+        message: "Idea and linked tasks deleted successfully",
+        deletedIdeaId: req.params.id 
+      });
     } catch (error) {
       console.error("Error deleting idea:", error);
       res.status(500).json({ message: "Failed to delete idea" });
@@ -460,8 +509,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const taskData = insertTaskSchema.parse({ ...req.body, todoListId: id });
-      const task = await storage.createTask(taskData);
-      res.json(task);
+      
+      // Create corresponding idea on canvas for task-canvas synchronization
+      let ideaId: string | undefined;
+      
+      try {
+        // Get existing ideas in the same group for positioning
+        const userIdeas = await storage.getUserIdeas(userId);
+        const groupIdeas = userIdeas.filter(idea => idea.groupId === todoList.groupId);
+        
+        // Calculate position for new idea card
+        let canvasX = 100; // default position
+        let canvasY = 100;
+        
+        if (groupIdeas.length > 0) {
+          // Position new card near existing cards in the group
+          const lastIdea = groupIdeas[groupIdeas.length - 1];
+          canvasX = lastIdea.canvasX + 300; // Space cards horizontally
+          canvasY = lastIdea.canvasY;
+          
+          // Wrap to next row if too far right
+          if (canvasX > 1000) {
+            canvasX = 100;
+            canvasY = lastIdea.canvasY + 200;
+          }
+        }
+        
+        // Get group info for color
+        const group = await storage.getGroup(todoList.groupId);
+        const ideaColor = group?.color || '#3B82F6';
+        
+        // Create idea card on canvas
+        const ideaData = {
+          userId,
+          groupId: todoList.groupId,
+          title: taskData.title,
+          description: `Task from ${todoList.name}`,
+          color: ideaColor,
+          canvasX,
+          canvasY
+        };
+        
+        const idea = await storage.createIdea(ideaData);
+        ideaId = idea.id;
+        
+        console.log(`Created synchronized idea ${ideaId} for task "${taskData.title}"`);
+      } catch (ideaError) {
+        console.error("Error creating synchronized idea:", ideaError);
+        // Continue with task creation even if idea creation fails
+      }
+      
+      // Create task with idea link
+      const taskWithIdea = { ...taskData, ideaId };
+      const task = await storage.createTask(taskWithIdea);
+      
+      // Return both task and idea information for frontend synchronization
+      res.json({ 
+        task, 
+        ideaCreated: !!ideaId, 
+        ideaId,
+        message: ideaId ? "Task and canvas idea created successfully" : "Task created successfully" 
+      });
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid task data", errors: error.errors });

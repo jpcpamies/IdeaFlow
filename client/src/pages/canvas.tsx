@@ -67,6 +67,7 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
+  useDroppable,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -119,7 +120,9 @@ export default function Canvas() {
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionTitle, setEditingSectionTitle] = useState("");
-  const [newTaskTitle, setNewTaskTitle] = useState("");
+  // Separate input state for each section and general tasks
+  const [sectionInputs, setSectionInputs] = useState<Record<string, string>>({});
+  const [generalTaskInput, setGeneralTaskInput] = useState("");
   const [newSectionName, setNewSectionName] = useState("");
   
   // Form State
@@ -493,10 +496,21 @@ export default function Canvas() {
       const res = await apiRequest('DELETE', `/api/ideas/${id}`);
       return await res.json();
     },
-    onSuccess: () => {
-      console.log('Idea deleted successfully');
+    onSuccess: (data) => {
+      const { message, deletedIdeaId } = data;
+      console.log('Bi-directional deletion completed:', message);
+      
+      // Invalidate ideas and groups queries
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      
+      // Also invalidate TodoList queries for bi-directional sync (linked tasks may be deleted)
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
+      }
+      
       setSelectedCards([]);
       setIdeaToDelete(null);
       setIsDeleteConfirmOpen(false);
@@ -622,10 +636,29 @@ export default function Canvas() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any, variables: any) => {
+      // Handle the new response format that includes both task and idea information
+      const { task, ideaCreated, ideaId, message } = data;
+      
+      console.log('Task creation response:', { task: task?.id, ideaCreated, ideaId, message });
+      
+      // Invalidate task-related queries
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
-      setNewTaskTitle('');
+      
+      // If an idea was created, also invalidate ideas and groups queries for canvas sync
+      if (ideaCreated && ideaId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+        console.log(`Canvas synchronized: Created idea ${ideaId} for task "${task.title}"`);
+      }
+      
+      // Clear the appropriate input field
+      if (variables.sectionId) {
+        setSectionInputs(prev => ({ ...prev, [variables.sectionId]: '' }));
+      } else {
+        setGeneralTaskInput('');
+      }
     }
   });
 
@@ -660,6 +693,37 @@ export default function Canvas() {
     }
   });
 
+  const deleteTaskMutation = useMutation({
+    mutationFn: async (id: string) => {
+      console.log('Deleting task:', id);
+      const response = await apiRequest('DELETE', `/api/tasks/${id}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete task');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      const { message, deletedTaskId, deletedIdeaId } = data;
+      console.log('Bi-directional deletion completed:', message);
+      
+      // Invalidate task-related queries
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // If a linked idea was deleted, also invalidate idea queries for canvas sync
+      if (deletedIdeaId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+        console.log(`Canvas synchronized: Deleted linked idea ${deletedIdeaId}`);
+      }
+    },
+    onError: (error) => {
+      console.error('Failed to delete task:', error);
+      alert('Failed to delete task: ' + error.message);
+    }
+  });
+
   const clearCompletedTasksMutation = useMutation({
     mutationFn: async (todoListId: string) => {
       const response = await apiRequest('DELETE', `/api/todolists/${todoListId}/completed-tasks`);
@@ -672,6 +736,9 @@ export default function Canvas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      // Also invalidate ideas since completed tasks with linked ideas will be deleted
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
     }
   });
 
@@ -697,7 +764,8 @@ export default function Canvas() {
     setEditingTaskTitle('');
     setEditingSectionId(null);
     setEditingSectionTitle('');
-    setNewTaskTitle('');
+    setSectionInputs({});
+    setGeneralTaskInput('');
     setNewSectionName('');
   };
 
@@ -711,18 +779,52 @@ export default function Canvas() {
 
     if (activeId === overId) return;
 
-    // Handle task reordering
-    if (activeId.startsWith('task-') && overId.startsWith('task-')) {
-      const activeTask = todoListTasks.find(task => `task-${task.id}` === activeId);
-      const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
-      
-      if (!activeTask || !overTask) return;
+    // Only handle task dragging
+    if (!activeId.startsWith('task-')) return;
 
+    const activeTask = todoListTasks.find(task => `task-${task.id}` === activeId);
+    if (!activeTask) return;
+
+    // Handle task-to-task (reordering within or across sections)
+    if (overId.startsWith('task-')) {
+      const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
+      if (!overTask) return;
+
+      // Calculate new order index
       const reorderIndex = overTask.orderIndex || 0;
+      
       reorderTaskMutation.mutate({
         id: activeTask.id,
         orderIndex: reorderIndex,
         sectionId: overTask.sectionId || null
+      });
+    }
+    // Handle task-to-section (move task to section)
+    else if (overId.startsWith('section-')) {
+      const sectionId = overId.replace('section-', '');
+      const targetSection = todoListSections.find(section => section.id === sectionId);
+      
+      if (targetSection) {
+        // Calculate new order index for the target section
+        const tasksInTargetSection = todoListTasks.filter(task => task.sectionId === sectionId);
+        const maxOrderInSection = Math.max(...tasksInTargetSection.map(task => task.orderIndex || 0), 0);
+        
+        reorderTaskMutation.mutate({
+          id: activeTask.id,
+          orderIndex: maxOrderInSection + 1,
+          sectionId: sectionId
+        });
+      }
+    }
+    // Handle task-to-general (move task to general/unsectioned area)
+    else if (overId === 'general-tasks') {
+      const unsectionedTasks = todoListTasks.filter(task => !task.sectionId);
+      const maxOrderInGeneral = Math.max(...unsectionedTasks.map(task => task.orderIndex || 0), 0);
+      
+      reorderTaskMutation.mutate({
+        id: activeTask.id,
+        orderIndex: maxOrderInGeneral + 1,
+        sectionId: null
       });
     }
   };
@@ -778,13 +880,14 @@ export default function Canvas() {
   };
 
   const addNewTask = (sectionId?: string) => {
-    if (!newTaskTitle.trim() || !selectedTodoList) return;
+    const taskTitle = sectionId ? sectionInputs[sectionId] : generalTaskInput;
+    if (!taskTitle?.trim() || !selectedTodoList) return;
 
     const maxOrder = Math.max(...todoListTasks.map(task => task.orderIndex || 0), 0);
     
     createTaskMutation.mutate({
       todoListId: selectedTodoList.id,
-      title: newTaskTitle.trim(),
+      title: taskTitle.trim(),
       sectionId,
       orderIndex: maxOrder + 1
     });
@@ -800,6 +903,40 @@ export default function Canvas() {
       name: newSectionName.trim(),
       orderIndex: maxOrder + 1
     });
+  };
+
+  // DroppableSection Component - makes section headers droppable
+  const DroppableSection = ({ sectionId, children }: { sectionId: string; children: React.ReactNode }) => {
+    const { isOver, setNodeRef } = useDroppable({
+      id: `section-${sectionId}`,
+    });
+
+    return (
+      <div
+        ref={setNodeRef}
+        className={`transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
+        style={{ minHeight: '10px' }}
+      >
+        {children}
+      </div>
+    );
+  };
+
+  // DroppableGeneralTasks Component - makes general tasks area droppable
+  const DroppableGeneralTasks = ({ children }: { children: React.ReactNode }) => {
+    const { isOver, setNodeRef } = useDroppable({
+      id: 'general-tasks',
+    });
+
+    return (
+      <div
+        ref={setNodeRef}
+        className={`transition-colors ${isOver ? 'bg-blue-50 border-blue-300 border-2 border-dashed rounded-md' : ''}`}
+        style={{ minHeight: '20px' }}
+      >
+        {children}
+      </div>
+    );
   };
 
   // SortableTaskItem Component
@@ -2725,7 +2862,8 @@ export default function Canvas() {
                     const isCollapsed = collapsedSections.has(section.id);
 
                     return (
-                      <div key={section.id} className="border rounded-lg p-4 bg-white">
+                      <DroppableSection key={section.id} sectionId={section.id}>
+                        <div className="border rounded-lg p-4 bg-white">
                         {/* Section Header */}
                         <div className="flex items-center justify-between mb-3">
                           {editingSectionId === section.id ? (
@@ -2811,8 +2949,8 @@ export default function Canvas() {
                             <div className="flex space-x-2 pt-2 border-t border-gray-100">
                               <Input
                                 placeholder="Add a task..."
-                                value={newTaskTitle}
-                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                                value={sectionInputs[section.id] || ''}
+                                onChange={(e) => setSectionInputs(prev => ({ ...prev, [section.id]: e.target.value }))}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') addNewTask(section.id);
                                 }}
@@ -2822,7 +2960,7 @@ export default function Canvas() {
                               <Button
                                 size="sm"
                                 onClick={() => addNewTask(section.id)}
-                                disabled={!newTaskTitle.trim()}
+                                disabled={!(sectionInputs[section.id] || '').trim()}
                                 data-testid={`button-add-task-${section.id}`}
                               >
                                 <Plus className="w-4 h-4" />
@@ -2844,7 +2982,8 @@ export default function Canvas() {
                             )}
                           </div>
                         )}
-                      </div>
+                        </div>
+                      </DroppableSection>
                     );
                   })}
 
@@ -2860,7 +2999,8 @@ export default function Canvas() {
                   if (unsectionedTasks.length === 0) return null;
 
                   return (
-                    <div className="border rounded-lg p-4 bg-gray-50">
+                    <DroppableGeneralTasks>
+                      <div className="border rounded-lg p-4 bg-gray-50">
                       <h3 className="font-medium mb-3 text-gray-700">
                         General Tasks ({unsectionedTasks.length})
                       </h3>
@@ -2878,8 +3018,8 @@ export default function Canvas() {
                       <div className="flex space-x-2 pt-3 mt-3 border-t border-gray-200">
                         <Input
                           placeholder="Add a general task..."
-                          value={newTaskTitle}
-                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          value={generalTaskInput}
+                          onChange={(e) => setGeneralTaskInput(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') addNewTask();
                           }}
@@ -2889,7 +3029,7 @@ export default function Canvas() {
                         <Button
                           size="sm"
                           onClick={() => addNewTask()}
-                          disabled={!newTaskTitle.trim()}
+                          disabled={!generalTaskInput.trim()}
                           data-testid="button-add-general-task"
                         >
                           <Plus className="w-4 h-4" />
@@ -2911,7 +3051,8 @@ export default function Canvas() {
                           </SortableContext>
                         </div>
                       )}
-                    </div>
+                      </div>
+                    </DroppableGeneralTasks>
                   );
                 })()}
               </div>
