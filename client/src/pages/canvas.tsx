@@ -232,10 +232,22 @@ export default function Canvas() {
   // Mutations
   const createIdeaMutation = useMutation({
     mutationFn: async (data: InsertIdea) => {
+      console.log('Mutation function called with:', data);
       const res = await apiRequest('POST', '/api/ideas', data);
-      return await res.json();
+      console.log('API response status:', res.status);
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('API error response:', errorData);
+        throw new Error(errorData.message || 'Failed to create idea');
+      }
+      
+      const result = await res.json();
+      console.log('Idea created successfully:', result);
+      return result;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      console.log('Mutation succeeded:', data);
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       // Clear all form fields
@@ -246,6 +258,10 @@ export default function Canvas() {
       setIsCreatingNewGroup(false);
       setNewGroupName("");
       setIsNewIdeaDialogOpen(false);
+    },
+    onError: (error) => {
+      console.error('Mutation failed:', error);
+      alert('Failed to create idea: ' + error.message);
     },
   });
 
@@ -338,23 +354,53 @@ export default function Canvas() {
 
   // Idea CRUD functions
   const handleCreateIdea = async () => {
-    if (!newIdeaTitle.trim()) return;
+    console.log('=== CREATE IDEA HANDLER CALLED ===');
+    console.log('Form data:', {
+      title: newIdeaTitle,
+      description: newIdeaDescription,
+      groupId: newIdeaGroupId,
+      color: newIdeaColor,
+      isCreatingNewGroup,
+      newGroupName
+    });
+
+    if (!newIdeaTitle.trim()) {
+      console.log('Title is empty, aborting');
+      return;
+    }
     
-    let finalGroupId = newIdeaGroupId;
+    let finalGroupId = newIdeaGroupId === "no-group" ? null : newIdeaGroupId;
     let finalColor = newIdeaColor;
     
     // Handle creating new group if selected
     if (isCreatingNewGroup && newGroupName.trim()) {
+      console.log('Creating new group:', newGroupName);
       try {
         const groupRes = await apiRequest('POST', '/api/groups', {
           name: newGroupName.trim(),
           color: newIdeaColor
         });
+        
+        if (!groupRes.ok) {
+          const errorData = await groupRes.json();
+          console.error('Group creation failed:', errorData);
+          
+          // Check if it's a duplicate name error
+          if (errorData.message?.includes('already exists') || errorData.message?.includes('duplicate')) {
+            alert('A group with this name already exists. Please choose a different name.');
+          } else {
+            alert('Failed to create group: ' + (errorData.message || 'Unknown error'));
+          }
+          return;
+        }
+        
         const newGroup = await groupRes.json();
+        console.log('Group created successfully:', newGroup);
         finalGroupId = newGroup.id;
         finalColor = newGroup.color;
       } catch (error) {
         console.error('Failed to create new group:', error);
+        alert('Failed to create group. Please try again.');
         return;
       }
     } else if (finalGroupId) {
@@ -394,15 +440,18 @@ export default function Canvas() {
       }
     }
 
-    createIdeaMutation.mutate({
+    const ideaData = {
       userId: user?.id || "",
       title: newIdeaTitle.trim(),
       description: newIdeaDescription.trim(),
-      groupId: finalGroupId || null,
+      groupId: finalGroupId,
       color: finalColor,
       canvasX: newX,
       canvasY: newY,
-    });
+    };
+
+    console.log('Creating idea with data:', ideaData);
+    createIdeaMutation.mutate(ideaData);
   };
 
   const handleEditIdea = (ideaId: string) => {

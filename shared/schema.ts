@@ -46,7 +46,9 @@ export const groups = pgTable("groups", {
   name: varchar("name", { length: 50 }).notNull(),
   color: varchar("color").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  userNameUnique: index("groups_user_id_name_unique").on(table.userId, table.name),
+}));
 
 // Ideas table - stores canvas ideas with positioning and group reference
 export const ideas = pgTable("ideas", {

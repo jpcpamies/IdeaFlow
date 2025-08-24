@@ -207,11 +207,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/ideas', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      console.log('Creating idea - User ID:', userId);
+      console.log('Request body:', req.body);
+      
       const ideaData = insertIdeaSchema.parse({ ...req.body, userId });
+      console.log('Parsed idea data:', ideaData);
+      
       const idea = await storage.createIdea(ideaData);
+      console.log('Created idea successfully:', idea);
       res.json(idea);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("Zod validation errors:", error.errors);
         return res.status(400).json({ message: "Invalid idea data", errors: error.errors });
       }
       console.error("Error creating idea:", error);
@@ -272,11 +279,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/groups', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
+      console.log('Creating group - User ID:', userId);
+      console.log('Group request body:', req.body);
+      
       const groupData = insertGroupSchema.parse({ ...req.body, userId });
+      console.log('Parsed group data:', groupData);
+      
       const group = await storage.createGroup(groupData);
+      console.log('Created group successfully:', group);
       res.json(group);
     } catch (error) {
       if (error instanceof z.ZodError) {
+        console.error("Group validation errors:", error.errors);
         return res.status(400).json({ message: "Invalid group data", errors: error.errors });
       }
       console.error("Error creating group:", error);
