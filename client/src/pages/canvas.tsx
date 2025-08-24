@@ -1624,7 +1624,10 @@ export default function Canvas() {
                 </>
               )}
             </div>
-            {children}
+            {/* Wrap section tasks in their own SortableContext */}
+            <SortableContext items={sectionTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+              {children}
+            </SortableContext>
           </div>
         </DroppableSection>
       </div>
@@ -3756,9 +3759,7 @@ export default function Canvas() {
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
-              {/* Unified SortableContext for ALL tasks to enable cross-section dragging */}
-              <SortableContext items={todoListTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
-              {/* Add New Section */}
+              {/* Add New Section - Outside any SortableContext */}
               <div className="flex space-x-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
                 <Input
                   placeholder="Create a new section..."
@@ -3827,7 +3828,7 @@ export default function Canvas() {
                   })}
                 </SortableContext>
 
-                {/* Unsectioned Tasks - Show without section container */}
+                {/* Unsectioned Tasks with their own SortableContext */}
                 {(() => {
                   const unsectionedTasks = todoListTasks
                     .filter(task => !task.sectionId)
@@ -3837,6 +3838,7 @@ export default function Canvas() {
                   const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
 
                   return (
+                    <SortableContext items={unsectionedTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
                     <DroppableGeneralTasks>
                       <div className="space-y-3">
                         {/* Incomplete Unsectioned Tasks */}
@@ -3888,10 +3890,10 @@ export default function Canvas() {
                         )}
                       </div>
                     </DroppableGeneralTasks>
+                    </SortableContext>
                   );
                 })()}
               </div>
-              </SortableContext>
             </DndContext>
           </div>
 
