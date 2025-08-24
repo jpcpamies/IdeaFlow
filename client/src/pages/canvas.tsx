@@ -144,11 +144,33 @@ export default function Canvas() {
       return await res.json();
     },
     onSuccess: (updatedIdea: Idea, variables) => {
-      // Don't invalidate queries to prevent snap-back, position is already updated locally
+      // Only skip invalidation for position updates to prevent snap-back
+      if (!('groupId' in variables.updates)) {
+        return; // Skip invalidation for position updates (canvasX, canvasY)
+      }
+      // For group assignments/removals, update the local cache immediately
+      queryClient.setQueryData(['/api/ideas'], (oldData: Idea[] | undefined) => {
+        if (!oldData) return [updatedIdea];
+        return oldData.map(idea => 
+          idea.id === variables.id ? { ...idea, ...variables.updates } : idea
+        );
+      });
     },
     onError: (error) => {
-      console.error('Failed to save position:', error);
-      // Optionally show toast notification for failed saves
+      console.error('Failed to update idea:', error);
+    }
+  });
+
+  const createGroupMutation = useMutation({
+    mutationFn: async (groupData: { name: string; color: string }) => {
+      const res = await apiRequest('POST', '/api/groups', groupData);
+      return await res.json();
+    },
+    onSuccess: (newGroup: Group) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+    },
+    onError: (error) => {
+      console.error('Failed to create group:', error);
     }
   });
 
@@ -243,33 +265,90 @@ export default function Canvas() {
     setIsGroupActionsModalOpen(true);
   };
 
-  const handleAssignToGroup = (groupId: string) => {
-    selectedCards.forEach(cardId => {
-      updateIdeaMutation.mutate({
-        id: cardId,
-        updates: { groupId }
-      });
-    });
-    setIsAssignGroupModalOpen(false);
-    setIsGroupActionsModalOpen(false);
-    setSelectedCards([]);
+  const handleAssignToGroup = async (groupId: string) => {
+    try {
+      // Update all selected cards
+      const updatePromises = selectedCards.map(cardId => 
+        updateIdeaMutation.mutateAsync({
+          id: cardId,
+          updates: { groupId }
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      // Refresh data to update UI
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      
+      setIsAssignGroupModalOpen(false);
+      setIsGroupActionsModalOpen(false);
+      setSelectedCards([]);
+    } catch (error) {
+      console.error('Failed to assign cards to group:', error);
+      alert('Failed to assign cards to group. Please try again.');
+    }
   };
 
-  const handleCreateNewGroup = () => {
-    console.log('Create new group for cards:', selectedCards);
-    setIsGroupActionsModalOpen(false);
-    setSelectedCards([]);
+  const handleCreateNewGroup = async () => {
+    const groupName = window.prompt('Enter group name:');
+    if (!groupName?.trim()) return;
+    
+    try {
+      // Generate a random color for the new group
+      const colors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'];
+      const randomColor = colors[Math.floor(Math.random() * colors.length)];
+      
+      // Create the new group
+      const newGroup = await createGroupMutation.mutateAsync({
+        name: groupName,
+        color: randomColor
+      });
+      
+      // Assign selected cards to the new group
+      const updatePromises = selectedCards.map(cardId => 
+        updateIdeaMutation.mutateAsync({
+          id: cardId,
+          updates: { groupId: newGroup.id }
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      // Refresh all relevant data
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      
+      setIsGroupActionsModalOpen(false);
+      setSelectedCards([]);
+    } catch (error) {
+      console.error('Failed to create group:', error);
+      alert('Failed to create group. Please try again.');
+    }
   };
 
-  const handleRemoveFromGroups = () => {
-    selectedCards.forEach(cardId => {
-      updateIdeaMutation.mutate({
-        id: cardId,
-        updates: { groupId: null }
-      });
-    });
-    setIsGroupActionsModalOpen(false);
-    setSelectedCards([]);
+  const handleRemoveFromGroups = async () => {
+    try {
+      // Remove all selected cards from groups
+      const updatePromises = selectedCards.map(cardId => 
+        updateIdeaMutation.mutateAsync({
+          id: cardId,
+          updates: { groupId: null }
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      // Refresh data to update UI
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      
+      setIsGroupActionsModalOpen(false);
+      setSelectedCards([]);
+    } catch (error) {
+      console.error('Failed to remove cards from groups:', error);
+      alert('Failed to remove cards from groups. Please try again.');
+    }
   };
 
   const handleDeleteSelectedCards = () => {
@@ -790,6 +869,7 @@ export default function Canvas() {
                     top: idea.canvasY,
                     backgroundColor: cardColor,
                     cursor: dragState.isDragging ? 'grabbing' : 'pointer',
+                    transition: 'background-color 0.2s ease',
                     ...(isSelected && {
                       boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.3), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
                     })
