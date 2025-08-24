@@ -4465,12 +4465,12 @@ export default function Canvas() {
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-6">
-                {/* Unified SortableContext for all draggable items */}
+                {/* Separate SortableContext only for sections to prevent interference */}
                 <SortableContext 
-                  items={[
-                    ...todoListSections.map(section => `section-${section.id}`),
-                    ...todoListTasks.map(task => `task-${task.id}`)
-                  ]} 
+                  items={React.useMemo(() => 
+                    todoListSections.map(section => `section-${section.id}`), 
+                    [todoListSections]
+                  )} 
                   strategy={verticalListSortingStrategy}
                 >
                   {/* Render Sections */}
@@ -4487,47 +4487,63 @@ export default function Canvas() {
 
                       return (
                         <SortableSectionItem key={section.id} section={section} sectionTasks={sectionTasks}>
-                          {/* Section Tasks */}
+                          {/* Section Tasks with their own SortableContext */}
                           {!isCollapsed && (
-                            <div className="space-y-3">
-                              {/* Incomplete Tasks */}
-                              <div className="space-y-2">
-                                {incompleteTasks.map(task => (
-                                  <SortableTaskItem key={task.id} task={task} />
-                                ))}
-                              </div>
-
-                              {/* Completed Tasks */}
-                              {completedTasks.length > 0 && (
-                                <div className="pt-3 border-t border-gray-200">
-                                  <h4 className="text-sm font-medium text-gray-500 mb-2">
-                                    Completed ({completedTasks.length})
-                                  </h4>
-                                  <div className="space-y-2">
-                                    {completedTasks.map(task => (
-                                      <SortableTaskItem key={task.id} task={task} />
-                                    ))}
-                                  </div>
+                            <SortableContext 
+                              items={React.useMemo(() => 
+                                sectionTasks.map(task => `task-${task.id}`), 
+                                [sectionTasks]
+                              )} 
+                              strategy={verticalListSortingStrategy}
+                            >
+                              <div className="space-y-3">
+                                {/* Incomplete Tasks */}
+                                <div className="space-y-2">
+                                  {incompleteTasks.map(task => (
+                                    <SortableTaskItem key={task.id} task={task} />
+                                  ))}
                                 </div>
-                              )}
-                            </div>
+
+                                {/* Completed Tasks */}
+                                {completedTasks.length > 0 && (
+                                  <div className="pt-3 border-t border-gray-200">
+                                    <h4 className="text-sm font-medium text-gray-500 mb-2">
+                                      Completed ({completedTasks.length})
+                                    </h4>
+                                    <div className="space-y-2">
+                                      {completedTasks.map(task => (
+                                        <SortableTaskItem key={task.id} task={task} />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </SortableContext>
                           )}
                         </SortableSectionItem>
                       );
                     })}
+                </SortableContext>
 
-                  {/* Unsectioned Tasks */}
-                  {(() => {
-                    const unsectionedTasks = todoListTasks
-                      .filter(task => !task.sectionId)
-                      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-                    
-                    const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
-                    const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
+                {/* Unsectioned Tasks with their own SortableContext */}
+                {(() => {
+                  const unsectionedTasks = todoListTasks
+                    .filter(task => !task.sectionId)
+                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                  
+                  const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
+                  const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
 
-                    if (unsectionedTasks.length === 0) return null;
+                  if (unsectionedTasks.length === 0) return null;
 
-                    return (
+                  return (
+                    <SortableContext 
+                      items={React.useMemo(() => 
+                        unsectionedTasks.map(task => `task-${task.id}`), 
+                        [unsectionedTasks]
+                      )} 
+                      strategy={verticalListSortingStrategy}
+                    >
                       <DroppableGeneralTasks>
                         <div className="space-y-3">
                           {/* Incomplete Unsectioned Tasks */}
@@ -4554,9 +4570,9 @@ export default function Canvas() {
                           )}
                         </div>
                       </DroppableGeneralTasks>
-                    );
-                  })()}
-                </SortableContext>
+                    </SortableContext>
+                  );
+                })()}
               </div>
             </DndContext>
           </div>
