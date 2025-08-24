@@ -5,6 +5,7 @@ import {
   ideas,
   groups,
   todoLists,
+  sections,
   type User,
   type UpsertUser,
   type Project,
@@ -17,6 +18,8 @@ import {
   type InsertGroup,
   type TodoList,
   type InsertTodoList,
+  type Section,
+  type InsertSection,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and } from "drizzle-orm";
@@ -65,6 +68,14 @@ export interface IStorage {
   // Task operations for TodoLists
   getTodoListTasks(todoListId: string): Promise<Task[]>;
   toggleTask(id: string, completed: boolean, userId: string): Promise<Task>;
+  updateTaskOrder(id: string, orderIndex: number, sectionId?: string | null): Promise<Task>;
+  clearCompletedTasks(todoListId: string, userId: string): Promise<void>;
+  
+  // Section operations
+  getTodoListSections(todoListId: string): Promise<Section[]>;
+  createSection(section: InsertSection): Promise<Section>;
+  updateSection(id: string, updates: Partial<InsertSection>): Promise<Section>;
+  deleteSection(id: string): Promise<void>;
   
   // Statistics
   getUserStats(userId: string): Promise<{
@@ -318,6 +329,66 @@ export class DatabaseStorage implements IStorage {
       .where(eq(tasks.id, id))
       .returning();
     return updatedTask;
+  }
+
+  async updateTaskOrder(id: string, orderIndex: number, sectionId?: string | null): Promise<Task> {
+    const updates: Partial<InsertTask> = { orderIndex };
+    if (sectionId !== undefined) {
+      updates.sectionId = sectionId;
+    }
+    
+    const [updatedTask] = await db
+      .update(tasks)
+      .set(updates)
+      .where(eq(tasks.id, id))
+      .returning();
+    return updatedTask;
+  }
+
+  async clearCompletedTasks(todoListId: string, userId: string): Promise<void> {
+    await db
+      .delete(tasks)
+      .where(and(
+        eq(tasks.todoListId, todoListId),
+        eq(tasks.completed, true)
+      ));
+  }
+  
+  // Section operations
+  async getTodoListSections(todoListId: string): Promise<Section[]> {
+    return await db
+      .select()
+      .from(sections)
+      .where(eq(sections.todoListId, todoListId))
+      .orderBy(sections.orderIndex, sections.createdAt);
+  }
+
+  async createSection(section: InsertSection): Promise<Section> {
+    const [newSection] = await db
+      .insert(sections)
+      .values(section)
+      .returning();
+    return newSection;
+  }
+
+  async updateSection(id: string, updates: Partial<InsertSection>): Promise<Section> {
+    const [updatedSection] = await db
+      .update(sections)
+      .set(updates)
+      .where(eq(sections.id, id))
+      .returning();
+    return updatedSection;
+  }
+
+  async deleteSection(id: string): Promise<void> {
+    // First move all tasks in this section to null section
+    await db
+      .update(tasks)
+      .set({ sectionId: null })
+      .where(eq(tasks.sectionId, id));
+    
+    // Then delete the section
+    await db.delete(sections).where(eq(sections.id, id));
   }
 }
 

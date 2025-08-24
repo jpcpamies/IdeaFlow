@@ -73,10 +73,20 @@ export const todoLists = pgTable("todolists", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Sections table - organize tasks within TodoLists
+export const sections = pgTable("sections", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  todoListId: varchar("todolist_id").notNull().references(() => todoLists.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 100 }).notNull(),
+  orderIndex: integer("order_index").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Tasks table - individual tasks that can link back to ideas
 export const tasks = pgTable("tasks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   todoListId: varchar("todolist_id").notNull().references(() => todoLists.id, { onDelete: 'cascade' }),
+  sectionId: varchar("section_id").references(() => sections.id, { onDelete: 'set null' }),
   ideaId: varchar("idea_id").references(() => ideas.id, { onDelete: 'set null' }),
   title: varchar("title").notNull(),
   completed: boolean("completed").default(false),
@@ -136,12 +146,25 @@ export const todoListsRelations = relations(todoLists, ({ one, many }) => ({
     references: [groups.id],
   }),
   tasks: many(tasks),
+  sections: many(sections),
+}));
+
+export const sectionsRelations = relations(sections, ({ one, many }) => ({
+  todoList: one(todoLists, {
+    fields: [sections.todoListId],
+    references: [todoLists.id],
+  }),
+  tasks: many(tasks),
 }));
 
 export const tasksRelations = relations(tasks, ({ one }) => ({
   todoList: one(todoLists, {
     fields: [tasks.todoListId],
     references: [todoLists.id],
+  }),
+  section: one(sections, {
+    fields: [tasks.sectionId],
+    references: [sections.id],
   }),
   idea: one(ideas, {
     fields: [tasks.ideaId],
@@ -182,6 +205,11 @@ export const insertTodoListSchema = createInsertSchema(todoLists).omit({
   createdAt: true,
 });
 
+export const insertSectionSchema = createInsertSchema(sections).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
   createdAt: true,
@@ -205,6 +233,9 @@ export type Group = typeof groups.$inferSelect;
 
 export type InsertTodoList = z.infer<typeof insertTodoListSchema>;
 export type TodoList = typeof todoLists.$inferSelect;
+
+export type InsertSection = z.infer<typeof insertSectionSchema>;
+export type Section = typeof sections.$inferSelect;
 
 export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type Task = typeof tasks.$inferSelect;

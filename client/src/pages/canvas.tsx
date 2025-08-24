@@ -35,6 +35,7 @@ import {
   ZoomOut,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   User,
   Lightbulb,
   Target,
@@ -50,11 +51,33 @@ import {
   MoreHorizontal,
   Maximize2,
   Tag,
-  ClipboardList
+  ClipboardList,
+  GripVertical,
+  Check,
+  X
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import type { Idea, Group, InsertIdea, TodoList, Task } from "@shared/schema";
+import type { Idea, Group, InsertIdea, TodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 // Drag state interface
 interface DragState {
@@ -88,6 +111,16 @@ export default function Canvas() {
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [ideaToDelete, setIdeaToDelete] = useState<Idea | null>(null);
   const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; endX: number; endY: number } | null>(null);
+  // TodoList Modal State
+  const [selectedTodoList, setSelectedTodoList] = useState<TodoList | null>(null);
+  const [isTodoListModalOpen, setIsTodoListModalOpen] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editingTaskTitle, setEditingTaskTitle] = useState("");
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingSectionTitle, setEditingSectionTitle] = useState("");
+  const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newSectionName, setNewSectionName] = useState("");
   
   // Form State
   const [newIdeaTitle, setNewIdeaTitle] = useState("");
@@ -160,6 +193,30 @@ export default function Canvas() {
       return allTasksArrays.flat();
     },
     enabled: todoLists.length > 0,
+  }) as { data: Task[] };
+
+  // Fetch sections for selected TodoList
+  const { data: todoListSections = [] } = useQuery({
+    queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'],
+    queryFn: async () => {
+      if (!selectedTodoList) return [];
+      const response = await apiRequest('GET', `/api/todolists/${selectedTodoList.id}/sections`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedTodoList,
+  }) as { data: Section[] };
+
+  // Fetch tasks for selected TodoList (more detailed for modal)
+  const { data: todoListTasks = [] } = useQuery({
+    queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'],
+    queryFn: async () => {
+      if (!selectedTodoList) return [];
+      const response = await apiRequest('GET', `/api/todolists/${selectedTodoList.id}/tasks`);
+      if (!response.ok) return [];
+      return response.json();
+    },
+    enabled: !!selectedTodoList,
   }) as { data: Task[] };
 
   // Filter ideas based on selected group
@@ -467,7 +524,7 @@ export default function Canvas() {
   const toggleTaskMutation = useMutation({
     mutationFn: async ({ taskId, completed }: { taskId: string; completed: boolean }) => {
       console.log('Toggling task completion:', taskId, 'to', completed);
-      const response = await apiRequest('PATCH', `/api/tasks/${taskId}`, { completed });
+      const response = await apiRequest('PATCH', `/api/tasks/${taskId}/toggle`, { completed });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to toggle task');
@@ -477,12 +534,354 @@ export default function Canvas() {
     onSuccess: (updatedTask) => {
       console.log('Task toggled successfully:', updatedTask);
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      if (selectedTodoList) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
+      }
     },
     onError: (error) => {
       console.error('Failed to toggle task:', error);
       alert('Failed to update task. Please try again.');
     }
   });
+
+  // Advanced Task and Section Mutations
+  const createSectionMutation = useMutation({
+    mutationFn: async ({ todoListId, name, orderIndex }: { todoListId: string; name: string; orderIndex: number }) => {
+      const response = await apiRequest('POST', `/api/todolists/${todoListId}/sections`, { name, orderIndex });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create section');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+      setNewSectionName('');
+    },
+    onError: (error) => {
+      console.error('Failed to create section:', error);
+      alert('Failed to create section. Please try again.');
+    }
+  });
+
+  const updateSectionMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<InsertSection> }) => {
+      const response = await apiRequest('PATCH', `/api/sections/${id}`, updates);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update section');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+      setEditingSectionId(null);
+      setEditingSectionTitle('');
+    }
+  });
+
+  const deleteSectionMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest('DELETE', `/api/sections/${id}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete section');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+    }
+  });
+
+  const createTaskMutation = useMutation({
+    mutationFn: async ({ todoListId, title, sectionId, orderIndex }: { todoListId: string; title: string; sectionId?: string; orderIndex: number }) => {
+      const taskData: Partial<InsertTask> = {
+        title,
+        completed: false,
+        orderIndex
+      };
+      if (sectionId) {
+        taskData.sectionId = sectionId;
+      }
+      
+      const response = await apiRequest('POST', `/api/todolists/${todoListId}/tasks`, taskData);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create task');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      setNewTaskTitle('');
+    }
+  });
+
+  const updateTaskMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<InsertTask> }) => {
+      const response = await apiRequest('PATCH', `/api/tasks/${id}`, updates);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update task');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      setEditingTaskId(null);
+      setEditingTaskTitle('');
+    }
+  });
+
+  const reorderTaskMutation = useMutation({
+    mutationFn: async ({ id, orderIndex, sectionId }: { id: string; orderIndex: number; sectionId?: string | null }) => {
+      const response = await apiRequest('PATCH', `/api/tasks/${id}/reorder`, { orderIndex, sectionId });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reorder task');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+    }
+  });
+
+  const clearCompletedTasksMutation = useMutation({
+    mutationFn: async (todoListId: string) => {
+      const response = await apiRequest('DELETE', `/api/todolists/${todoListId}/completed-tasks`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to clear completed tasks');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+    }
+  });
+
+  // Drag and Drop Sensors for TodoList Modal
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // TodoList Modal Functions
+  const openTodoListModal = (todoList: TodoList) => {
+    setSelectedTodoList(todoList);
+    setIsTodoListModalOpen(true);
+  };
+
+  const closeTodoListModal = () => {
+    setSelectedTodoList(null);
+    setIsTodoListModalOpen(false);
+    setCollapsedSections(new Set());
+    setEditingTaskId(null);
+    setEditingTaskTitle('');
+    setEditingSectionId(null);
+    setEditingSectionTitle('');
+    setNewTaskTitle('');
+    setNewSectionName('');
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    if (activeId === overId) return;
+
+    // Handle task reordering
+    if (activeId.startsWith('task-') && overId.startsWith('task-')) {
+      const activeTask = todoListTasks.find(task => `task-${task.id}` === activeId);
+      const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
+      
+      if (!activeTask || !overTask) return;
+
+      const reorderIndex = overTask.orderIndex || 0;
+      reorderTaskMutation.mutate({
+        id: activeTask.id,
+        orderIndex: reorderIndex,
+        sectionId: overTask.sectionId || null
+      });
+    }
+  };
+
+  const toggleSection = (sectionId: string) => {
+    setCollapsedSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sectionId)) {
+        newSet.delete(sectionId);
+      } else {
+        newSet.add(sectionId);
+      }
+      return newSet;
+    });
+  };
+
+  const startEditingTask = (task: Task) => {
+    setEditingTaskId(task.id);
+    setEditingTaskTitle(task.title);
+  };
+
+  const saveTaskEdit = () => {
+    if (!editingTaskId || !editingTaskTitle.trim()) return;
+    
+    updateTaskMutation.mutate({
+      id: editingTaskId,
+      updates: { title: editingTaskTitle.trim() }
+    });
+  };
+
+  const cancelTaskEdit = () => {
+    setEditingTaskId(null);
+    setEditingTaskTitle('');
+  };
+
+  const startEditingSection = (section: Section) => {
+    setEditingSectionId(section.id);
+    setEditingSectionTitle(section.name);
+  };
+
+  const saveSectionEdit = () => {
+    if (!editingSectionId || !editingSectionTitle.trim()) return;
+    
+    updateSectionMutation.mutate({
+      id: editingSectionId,
+      updates: { name: editingSectionTitle.trim() }
+    });
+  };
+
+  const cancelSectionEdit = () => {
+    setEditingSectionId(null);
+    setEditingSectionTitle('');
+  };
+
+  const addNewTask = (sectionId?: string) => {
+    if (!newTaskTitle.trim() || !selectedTodoList) return;
+
+    const maxOrder = Math.max(...todoListTasks.map(task => task.orderIndex || 0), 0);
+    
+    createTaskMutation.mutate({
+      todoListId: selectedTodoList.id,
+      title: newTaskTitle.trim(),
+      sectionId,
+      orderIndex: maxOrder + 1
+    });
+  };
+
+  const addNewSection = () => {
+    if (!newSectionName.trim() || !selectedTodoList) return;
+
+    const maxOrder = Math.max(...todoListSections.map(section => section.orderIndex || 0), 0);
+    
+    createSectionMutation.mutate({
+      todoListId: selectedTodoList.id,
+      name: newSectionName.trim(),
+      orderIndex: maxOrder + 1
+    });
+  };
+
+  // SortableTaskItem Component
+  const SortableTaskItem = ({ task }: { task: Task }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: `task-${task.id}` });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    const isEditing = editingTaskId === task.id;
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`flex items-center space-x-3 p-2 rounded-lg ${
+          isDragging ? 'shadow-lg bg-white' : 'hover:bg-gray-50'
+        }`}
+        data-testid={`sortable-task-${task.id}`}
+      >
+        <div {...attributes} {...listeners} className="cursor-grab hover:cursor-grabbing">
+          <GripVertical className="w-4 h-4 text-gray-400" />
+        </div>
+        
+        <Checkbox
+          checked={task.completed}
+          onCheckedChange={(checked) => {
+            toggleTaskMutation.mutate({
+              taskId: task.id,
+              completed: Boolean(checked)
+            });
+          }}
+          data-testid={`checkbox-task-${task.id}`}
+        />
+        
+        {isEditing ? (
+          <div className="flex-1 flex space-x-2">
+            <Input
+              value={editingTaskTitle}
+              onChange={(e) => setEditingTaskTitle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') saveTaskEdit();
+                if (e.key === 'Escape') cancelTaskEdit();
+              }}
+              className="flex-1 h-8"
+              autoFocus
+              data-testid={`input-edit-task-${task.id}`}
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={saveTaskEdit}
+              data-testid={`button-save-task-${task.id}`}
+            >
+              <Check className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={cancelTaskEdit}
+              data-testid={`button-cancel-task-${task.id}`}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+        ) : (
+          <div
+            className={`flex-1 cursor-pointer ${
+              task.completed 
+                ? 'line-through text-gray-500' 
+                : 'text-gray-900'
+            }`}
+            onClick={() => startEditingTask(task)}
+            data-testid={`text-task-${task.id}`}
+          >
+            {task.title}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Zoom functions
   const handleZoomIn = () => {
@@ -1734,7 +2133,19 @@ export default function Canvas() {
                 return (
                   <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                      <div className="flex items-center space-x-3">
+                        <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openTodoListModal(todoList)}
+                          className="h-6 w-6 p-0 hover:bg-gray-200"
+                          title="Open TodoList Editor"
+                          data-testid={`button-expand-todolist-${todoList.id}`}
+                        >
+                          <Settings className="w-3 h-3" />
+                        </Button>
+                      </div>
                       {pendingCount > 0 && (
                         <Badge variant="outline" className="text-xs">
                           {pendingCount} left
@@ -2091,6 +2502,268 @@ export default function Canvas() {
               disabled={deleteIdeaMutation.isPending}
             >
               {deleteIdeaMutation.isPending ? 'Deleting...' : 'Delete Idea'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TodoList Modal with Advanced Management */}
+      <Dialog open={isTodoListModalOpen} onOpenChange={closeTodoListModal}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center justify-between">
+              <span>{selectedTodoList?.name}</span>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => selectedTodoList && clearCompletedTasksMutation.mutate(selectedTodoList.id)}
+                  disabled={!todoListTasks.some(task => task.completed)}
+                  data-testid="button-clear-completed"
+                >
+                  Clear Completed
+                </Button>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex-1 overflow-hidden flex flex-col space-y-4">
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              {/* Add New Section */}
+              <div className="flex space-x-2 p-3 bg-gray-50 rounded-lg">
+                <Input
+                  placeholder="New section name..."
+                  value={newSectionName}
+                  onChange={(e) => setNewSectionName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') addNewSection();
+                  }}
+                  className="flex-1"
+                  data-testid="input-new-section"
+                />
+                <Button
+                  onClick={addNewSection}
+                  disabled={!newSectionName.trim()}
+                  data-testid="button-add-section"
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-6">
+                {/* Render Sections */}
+                {todoListSections
+                  .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+                  .map((section) => {
+                    const sectionTasks = todoListTasks
+                      .filter(task => task.sectionId === section.id)
+                      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                    
+                    const completedTasks = sectionTasks.filter(task => task.completed);
+                    const incompleteTasks = sectionTasks.filter(task => !task.completed);
+                    const isCollapsed = collapsedSections.has(section.id);
+
+                    return (
+                      <div key={section.id} className="border rounded-lg p-4 bg-white">
+                        {/* Section Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          {editingSectionId === section.id ? (
+                            <div className="flex items-center space-x-2 flex-1">
+                              <Input
+                                value={editingSectionTitle}
+                                onChange={(e) => setEditingSectionTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') saveSectionEdit();
+                                  if (e.key === 'Escape') cancelSectionEdit();
+                                }}
+                                className="flex-1 h-8"
+                                autoFocus
+                                data-testid={`input-edit-section-${section.id}`}
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={saveSectionEdit}
+                                data-testid={`button-save-section-${section.id}`}
+                              >
+                                <Check className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={cancelSectionEdit}
+                                data-testid={`button-cancel-section-${section.id}`}
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                className="flex items-center space-x-2 text-left hover:text-gray-600"
+                                onClick={() => toggleSection(section.id)}
+                                data-testid={`button-toggle-section-${section.id}`}
+                              >
+                                {isCollapsed ? (
+                                  <ChevronRight className="w-4 h-4" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4" />
+                                )}
+                                <h3
+                                  className="font-medium cursor-pointer"
+                                  onClick={() => startEditingSection(section)}
+                                  data-testid={`text-section-${section.id}`}
+                                >
+                                  {section.name}
+                                </h3>
+                                <span className="text-sm text-gray-500">
+                                  ({sectionTasks.length} tasks)
+                                </span>
+                              </button>
+                              
+                              <div className="flex items-center space-x-2">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => deleteSectionMutation.mutate(section.id)}
+                                  className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
+                                  data-testid={`button-delete-section-${section.id}`}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+
+                        {/* Section Tasks */}
+                        {!isCollapsed && (
+                          <div className="space-y-3">
+                            {/* Incomplete Tasks */}
+                            <SortableContext items={incompleteTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+                              {incompleteTasks.map(task => (
+                                <SortableTaskItem key={task.id} task={task} />
+                              ))}
+                            </SortableContext>
+
+                            {/* Add New Task to Section */}
+                            <div className="flex space-x-2 pt-2 border-t border-gray-100">
+                              <Input
+                                placeholder="Add a task..."
+                                value={newTaskTitle}
+                                onChange={(e) => setNewTaskTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') addNewTask(section.id);
+                                }}
+                                className="flex-1 h-8"
+                                data-testid={`input-new-task-${section.id}`}
+                              />
+                              <Button
+                                size="sm"
+                                onClick={() => addNewTask(section.id)}
+                                disabled={!newTaskTitle.trim()}
+                                data-testid={`button-add-task-${section.id}`}
+                              >
+                                <Plus className="w-4 h-4" />
+                              </Button>
+                            </div>
+
+                            {/* Completed Tasks */}
+                            {completedTasks.length > 0 && (
+                              <div className="pt-3 border-t border-gray-200">
+                                <h4 className="text-sm font-medium text-gray-500 mb-2">
+                                  Completed ({completedTasks.length})
+                                </h4>
+                                <SortableContext items={completedTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+                                  {completedTasks.map(task => (
+                                    <SortableTaskItem key={task.id} task={task} />
+                                  ))}
+                                </SortableContext>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                {/* Unsectioned Tasks */}
+                {(() => {
+                  const unsectionedTasks = todoListTasks
+                    .filter(task => !task.sectionId)
+                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                  
+                  const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
+                  const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
+
+                  if (unsectionedTasks.length === 0) return null;
+
+                  return (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <h3 className="font-medium mb-3 text-gray-700">
+                        General Tasks ({unsectionedTasks.length})
+                      </h3>
+
+                      {/* Incomplete Unsectioned Tasks */}
+                      <SortableContext items={incompleteUnsectioned.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+                        <div className="space-y-2">
+                          {incompleteUnsectioned.map(task => (
+                            <SortableTaskItem key={task.id} task={task} />
+                          ))}
+                        </div>
+                      </SortableContext>
+
+                      {/* Add New General Task */}
+                      <div className="flex space-x-2 pt-3 mt-3 border-t border-gray-200">
+                        <Input
+                          placeholder="Add a general task..."
+                          value={newTaskTitle}
+                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') addNewTask();
+                          }}
+                          className="flex-1 h-8"
+                          data-testid="input-new-general-task"
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => addNewTask()}
+                          disabled={!newTaskTitle.trim()}
+                          data-testid="button-add-general-task"
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+
+                      {/* Completed General Tasks */}
+                      {completedUnsectioned.length > 0 && (
+                        <div className="pt-3 mt-3 border-t border-gray-200">
+                          <h4 className="text-sm font-medium text-gray-500 mb-2">
+                            Completed ({completedUnsectioned.length})
+                          </h4>
+                          <SortableContext items={completedUnsectioned.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-2">
+                              {completedUnsectioned.map(task => (
+                                <SortableTaskItem key={task.id} task={task} />
+                              ))}
+                            </div>
+                          </SortableContext>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+            </DndContext>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeTodoListModal} data-testid="button-close-todolist-modal">
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

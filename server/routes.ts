@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertProjectSchema, insertTaskSchema, insertIdeaSchema, insertGroupSchema, insertTodoListSchema } from "@shared/schema";
+import { insertProjectSchema, insertTaskSchema, insertIdeaSchema, insertGroupSchema, insertTodoListSchema, insertSectionSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -334,6 +334,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching todo list tasks:", error);
       res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  // Section routes for TodoLists
+  app.get("/api/todolists/:id/sections", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const sections = await storage.getTodoListSections(id);
+      res.json(sections);
+    } catch (error) {
+      console.error("Error fetching todo list sections:", error);
+      res.status(500).json({ message: "Failed to fetch sections" });
+    }
+  });
+
+  app.post("/api/todolists/:id/sections", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      const sectionData = insertSectionSchema.parse({ ...req.body, todoListId: id });
+      const section = await storage.createSection(sectionData);
+      res.json(section);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid section data", errors: error.errors });
+      }
+      console.error("Error creating section:", error);
+      res.status(500).json({ message: "Failed to create section" });
+    }
+  });
+
+  app.patch("/api/sections/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const updates = insertSectionSchema.partial().parse(req.body);
+      const updatedSection = await storage.updateSection(id, updates);
+      res.json(updatedSection);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      console.error("Error updating section:", error);
+      res.status(500).json({ message: "Failed to update section" });
+    }
+  });
+
+  app.delete("/api/sections/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      await storage.deleteSection(id);
+      res.json({ message: "Section deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting section:", error);
+      res.status(500).json({ message: "Failed to delete section" });
+    }
+  });
+
+  // Advanced task management routes
+  app.patch("/api/tasks/:id/toggle", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      const { completed } = req.body;
+      
+      const updatedTask = await storage.toggleTask(id, completed, userId);
+      res.json(updatedTask);
+    } catch (error) {
+      console.error("Error toggling task:", error);
+      res.status(500).json({ message: "Failed to toggle task" });
+    }
+  });
+
+  app.patch("/api/tasks/:id/reorder", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { orderIndex, sectionId } = req.body;
+      
+      const updatedTask = await storage.updateTaskOrder(id, orderIndex, sectionId);
+      res.json(updatedTask);
+    } catch (error) {
+      console.error("Error reordering task:", error);
+      res.status(500).json({ message: "Failed to reorder task" });
+    }
+  });
+
+  app.post("/api/todolists/:id/tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      const taskData = insertTaskSchema.parse({ ...req.body, todoListId: id });
+      const task = await storage.createTask(taskData);
+      res.json(task);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid task data", errors: error.errors });
+      }
+      console.error("Error creating task:", error);
+      res.status(500).json({ message: "Failed to create task" });
+    }
+  });
+
+  app.delete("/api/todolists/:id/completed-tasks", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      await storage.clearCompletedTasks(id, userId);
+      res.json({ message: "Completed tasks cleared successfully" });
+    } catch (error) {
+      console.error("Error clearing completed tasks:", error);
+      res.status(500).json({ message: "Failed to clear completed tasks" });
     }
   });
 
