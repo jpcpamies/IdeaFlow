@@ -777,26 +777,55 @@ export default function Canvas() {
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
 
-    if (!over) return;
+    console.log('=== DRAG END EVENT ===');
+    console.log('Active:', active?.id);
+    console.log('Over:', over?.id);
+
+    if (!over) {
+      console.log('No drop target found');
+      return;
+    }
 
     const activeId = String(active.id);
     const overId = String(over.id);
 
-    if (activeId === overId) return;
+    console.log('Active ID:', activeId);
+    console.log('Over ID:', overId);
+
+    if (activeId === overId) {
+      console.log('Same element, no action needed');
+      return;
+    }
 
     // Only handle task dragging
-    if (!activeId.startsWith('task-')) return;
+    if (!activeId.startsWith('task-')) {
+      console.log('Not a task drag, ignoring');
+      return;
+    }
 
     const activeTask = todoListTasks.find(task => `task-${task.id}` === activeId);
-    if (!activeTask) return;
+    if (!activeTask) {
+      console.log('Active task not found');
+      return;
+    }
+
+    console.log('Active task:', activeTask.title, 'from section:', activeTask.sectionId || 'general');
 
     // Handle task-to-task (reordering within or across sections)
     if (overId.startsWith('task-')) {
+      console.log('Dropping on another task');
       const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
-      if (!overTask) return;
+      if (!overTask) {
+        console.log('Over task not found');
+        return;
+      }
+
+      console.log('Over task:', overTask.title, 'in section:', overTask.sectionId || 'general');
 
       // Calculate new order index
       const reorderIndex = overTask.orderIndex || 0;
+      
+      console.log('Moving task to section:', overTask.sectionId || null, 'with order:', reorderIndex);
       
       reorderTaskMutation.mutate({
         id: activeTask.id,
@@ -804,15 +833,21 @@ export default function Canvas() {
         sectionId: overTask.sectionId || null
       });
     }
-    // Handle task-to-section (move task to section)
+    // Handle task-to-section (move task to section header/area)
     else if (overId.startsWith('section-')) {
+      console.log('Dropping on section area');
       const sectionId = overId.replace('section-', '');
       const targetSection = todoListSections.find(section => section.id === sectionId);
+      
+      console.log('Target section ID:', sectionId);
+      console.log('Target section found:', !!targetSection);
       
       if (targetSection) {
         // Calculate new order index for the target section
         const tasksInTargetSection = todoListTasks.filter(task => task.sectionId === sectionId);
         const maxOrderInSection = Math.max(...tasksInTargetSection.map(task => task.orderIndex || 0), 0);
+        
+        console.log('Moving to section:', targetSection.name, 'new order:', maxOrderInSection + 1);
         
         reorderTaskMutation.mutate({
           id: activeTask.id,
@@ -823,15 +858,22 @@ export default function Canvas() {
     }
     // Handle task-to-general (move task to general/unsectioned area)
     else if (overId === 'general-tasks') {
+      console.log('Dropping on general tasks area');
       const unsectionedTasks = todoListTasks.filter(task => !task.sectionId);
       const maxOrderInGeneral = Math.max(...unsectionedTasks.map(task => task.orderIndex || 0), 0);
+      
+      console.log('Moving to general tasks, new order:', maxOrderInGeneral + 1);
       
       reorderTaskMutation.mutate({
         id: activeTask.id,
         orderIndex: maxOrderInGeneral + 1,
         sectionId: null
       });
+    } else {
+      console.log('Unknown drop target type:', overId);
     }
+
+    console.log('=== END DRAG EVENT ===');
   };
 
   const toggleSection = (sectionId: string) => {
@@ -910,7 +952,7 @@ export default function Canvas() {
     });
   };
 
-  // DroppableSection Component - makes section headers droppable
+  // DroppableSection Component - makes entire section droppable with enhanced drop zone
   const DroppableSection = ({ sectionId, children }: { sectionId: string; children: React.ReactNode }) => {
     const { isOver, setNodeRef } = useDroppable({
       id: `section-${sectionId}`,
@@ -919,15 +961,26 @@ export default function Canvas() {
     return (
       <div
         ref={setNodeRef}
-        className={`transition-colors ${isOver ? 'bg-blue-50 border-blue-300' : ''}`}
-        style={{ minHeight: '10px' }}
+        className={`transition-all duration-200 relative ${
+          isOver 
+            ? 'bg-blue-50 border-2 border-blue-400 border-dashed shadow-lg ring-2 ring-blue-200' 
+            : 'border-2 border-transparent'
+        }`}
+        style={{ minHeight: '100px' }}
       >
+        {isOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-blue-100 bg-opacity-50 rounded-lg pointer-events-none z-10">
+            <div className="bg-blue-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+              Drop task here
+            </div>
+          </div>
+        )}
         {children}
       </div>
     );
   };
 
-  // DroppableGeneralTasks Component - makes general tasks area droppable
+  // DroppableGeneralTasks Component - makes general tasks area droppable with enhanced feedback
   const DroppableGeneralTasks = ({ children }: { children: React.ReactNode }) => {
     const { isOver, setNodeRef } = useDroppable({
       id: 'general-tasks',
@@ -936,9 +989,20 @@ export default function Canvas() {
     return (
       <div
         ref={setNodeRef}
-        className={`transition-colors ${isOver ? 'bg-blue-50 border-blue-300 border-2 border-dashed rounded-md' : ''}`}
-        style={{ minHeight: '20px' }}
+        className={`transition-all duration-200 relative ${
+          isOver 
+            ? 'bg-green-50 border-2 border-green-400 border-dashed shadow-lg ring-2 ring-green-200' 
+            : 'border-2 border-transparent'
+        }`}
+        style={{ minHeight: '80px' }}
       >
+        {isOver && (
+          <div className="absolute inset-0 flex items-center justify-center bg-green-100 bg-opacity-50 rounded-lg pointer-events-none z-10">
+            <div className="bg-green-500 text-white px-4 py-2 rounded-full text-sm font-medium">
+              Drop in General Tasks
+            </div>
+          </div>
+        )}
         {children}
       </div>
     );
@@ -2745,7 +2809,7 @@ export default function Canvas() {
 
                     return (
                       <DroppableSection key={section.id} sectionId={section.id}>
-                        <div className="border rounded-lg p-4 bg-white">
+                        <div className="border rounded-lg p-4 bg-white relative">
                         {/* Section Header */}
                         <div className="flex items-center justify-between mb-3">
                           {editingSectionId === section.id ? (
