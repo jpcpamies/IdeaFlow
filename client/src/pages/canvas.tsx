@@ -972,15 +972,34 @@ export default function Canvas() {
       const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
       if (!overTask) return;
 
-      // Don't move if it's the same section and adjacent position
-      if (activeTask.sectionId === overTask.sectionId && 
-          Math.abs((activeTask.orderIndex || 0) - (overTask.orderIndex || 0)) <= 1) {
-        return;
+      // Calculate new order index based on position relative to the over task
+      const tasksInTargetSection = todoListTasks
+        .filter(task => task.sectionId === (overTask.sectionId || null))
+        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      
+      const overTaskIndex = tasksInTargetSection.findIndex(task => task.id === overTask.id);
+      const activeTaskIndex = tasksInTargetSection.findIndex(task => task.id === activeTask.id);
+      
+      // Don't move if it's the exact same position
+      if (activeTaskIndex === overTaskIndex) return;
+      
+      // Calculate new order index
+      let newOrderIndex: number;
+      if (overTaskIndex === 0) {
+        // Moving to first position
+        newOrderIndex = Math.max(0, (overTask.orderIndex || 0) - 1);
+      } else if (activeTaskIndex < overTaskIndex) {
+        // Moving down in the list
+        newOrderIndex = (overTask.orderIndex || 0);
+      } else {
+        // Moving up in the list
+        const prevTask = tasksInTargetSection[overTaskIndex - 1];
+        newOrderIndex = prevTask ? ((prevTask.orderIndex || 0) + (overTask.orderIndex || 0)) / 2 : (overTask.orderIndex || 0) - 1;
       }
 
       reorderTaskMutation.mutate({
         id: activeTask.id,
-        orderIndex: overTask.orderIndex || 0,
+        orderIndex: newOrderIndex,
         sectionId: overTask.sectionId || null
       });
     }
