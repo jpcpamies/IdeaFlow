@@ -4467,10 +4467,7 @@ export default function Canvas() {
               <div className="flex-1 overflow-y-auto space-y-6">
                 {/* Separate SortableContext only for sections to prevent interference */}
                 <SortableContext 
-                  items={React.useMemo(() => 
-                    todoListSections.map(section => `section-${section.id}`), 
-                    [todoListSections]
-                  )} 
+                  items={todoListSections.map(section => `section-${section.id}`)} 
                   strategy={verticalListSortingStrategy}
                 >
                   {/* Render Sections */}
@@ -4490,10 +4487,7 @@ export default function Canvas() {
                           {/* Section Tasks with their own SortableContext */}
                           {!isCollapsed && (
                             <SortableContext 
-                              items={React.useMemo(() => 
-                                sectionTasks.map(task => `task-${task.id}`), 
-                                [sectionTasks]
-                              )} 
+                              items={sectionTasks.map(task => `task-${task.id}`)} 
                               strategy={verticalListSortingStrategy}
                             >
                               <div className="space-y-3">
@@ -4538,10 +4532,7 @@ export default function Canvas() {
 
                   return (
                     <SortableContext 
-                      items={React.useMemo(() => 
-                        unsectionedTasks.map(task => `task-${task.id}`), 
-                        [unsectionedTasks]
-                      )} 
+                      items={unsectionedTasks.map(task => `task-${task.id}`)} 
                       strategy={verticalListSortingStrategy}
                     >
                       <DroppableGeneralTasks>
