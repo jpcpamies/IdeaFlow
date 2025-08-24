@@ -413,8 +413,8 @@ export default function Canvas() {
     },
     onSuccess: (data) => {
       console.log('Mutation succeeded:', data);
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas', { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups', { projectId }] });
       // Clear all form fields
       setNewIdeaTitle("");
       setNewIdeaDescription("");
@@ -1482,7 +1482,8 @@ export default function Canvas() {
       try {
         const groupRes = await apiRequest('POST', '/api/groups', {
           name: newGroupName.trim(),
-          color: newIdeaColor
+          color: newIdeaColor,
+          projectId: projectId! // Add project ID for group creation
         });
         
         if (!groupRes.ok) {
@@ -1546,6 +1547,7 @@ export default function Canvas() {
 
     const ideaData = {
       userId: user?.id || "",
+      projectId: projectId!, // Add project ID for proper isolation
       title: newIdeaTitle.trim(),
       description: newIdeaDescription.trim(),
       groupId: finalGroupId,
@@ -1581,7 +1583,8 @@ export default function Canvas() {
       try {
         const groupRes = await apiRequest('POST', '/api/groups', {
           name: editNewGroupName.trim(),
-          color: editIdeaColor
+          color: editIdeaColor,
+          projectId: projectId! // Add project ID for group creation
         });
         
         if (!groupRes.ok) {
