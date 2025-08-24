@@ -3657,7 +3657,7 @@ export default function Canvas() {
 
       {/* Delete Section Confirmation Dialog */}
       <Dialog open={isSectionDeleteConfirmOpen} onOpenChange={setIsSectionDeleteConfirmOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-[42rem]">
           <DialogHeader>
             <DialogTitle>Delete Section</DialogTitle>
             <DialogDescription>
