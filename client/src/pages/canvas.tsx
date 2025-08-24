@@ -61,11 +61,11 @@ import {
   CheckSquare,
   RefreshCw,
   LogOut,
-  Scatter,
-  Group
+  Layers as GroupIcon,
+  Layers
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import type { Idea, Group, InsertIdea, TodoList, InsertTodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
+import type { Idea, Group, InsertIdea, TodoList, InsertTodoList, Task, Section, InsertTask, InsertSection, Project } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import {
   DndContext,
@@ -87,6 +87,11 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+
+// Zoom constants
+const ZOOM_MIN = 25;
+const ZOOM_MAX = 400;
+const ZOOM_STEP = 25;
 
 // Drag state interface
 interface DragState {
@@ -196,6 +201,102 @@ export default function Canvas() {
     isPanning: false,
     startPan: { x: 0, y: 0 },
     lastPan: { x: 0, y: 0 }
+  });
+
+  // Update Idea Mutation - Moved here to be available for debounced position update
+  const updateIdeaMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string, updates: Partial<Idea> }) => {
+      const res = await apiRequest('PATCH', `/api/ideas/${id}`, updates);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+      return await res.json();
+    },
+    onSuccess: (updatedIdea: Idea, variables) => {
+      // Clear retry count and active update status on successful update
+      const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
+      if (isPositionUpdate) {
+        positionUpdateRetriesRef.current.delete(variables.id);
+        activePositionUpdatesRef.current.delete(variables.id);
+      }
+      
+      // Only skip invalidation for position updates to prevent snap-back
+      if (isPositionUpdate && Object.keys(variables.updates).length <= 2) {
+        return; // Skip invalidation for pure position updates only
+      }
+      
+      // For all other updates (group, title, description, etc.), invalidate queries
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+    },
+    onError: (error, variables) => {
+      console.error('Failed to update idea:', error);
+      
+      // Handle position update failures with retry logic
+      const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
+      if (isPositionUpdate) {
+        const retryCount = positionUpdateRetriesRef.current.get(variables.id) || 0;
+        const maxRetries = 3;
+        
+        if (retryCount < maxRetries) {
+          positionUpdateRetriesRef.current.set(variables.id, retryCount + 1);
+          console.log(`Retrying position update for idea ${variables.id}, attempt ${retryCount + 1}/${maxRetries}`);
+          
+          // Retry with exponential backoff
+          setTimeout(() => {
+            updateIdeaMutation.mutate(variables);
+          }, Math.pow(2, retryCount) * 1000);
+        } else {
+          // Max retries exceeded - rollback position in UI
+          console.error(`Position update failed after ${maxRetries} retries for idea ${variables.id}`);
+          
+          // Find the original idea and restore its position
+          const originalIdea = ideas.find(idea => idea.id === variables.id);
+          if (originalIdea) {
+            // Rollback UI to original position
+            const element = document.querySelector(`[data-idea-id="${variables.id}"]`) as HTMLElement;
+            if (element) {
+              element.style.left = `${originalIdea.canvasX}px`;
+              element.style.top = `${originalIdea.canvasY}px`;
+            }
+            
+            // Update query cache to original position
+            const currentIdeas = queryClient.getQueryData(['/api/ideas', { projectId }]) as Idea[];
+            if (currentIdeas) {
+              const updatedIdeas = currentIdeas.map(idea => 
+                idea.id === variables.id 
+                  ? { ...idea, canvasX: originalIdea.canvasX, canvasY: originalIdea.canvasY }
+                  : idea
+              );
+              queryClient.setQueryData(['/api/ideas', { projectId }], updatedIdeas);
+              
+              // Also update the generic ideas query to maintain consistency
+              const genericIdeas = queryClient.getQueryData(['/api/ideas']) as Idea[];
+              if (genericIdeas) {
+                const updatedGenericIdeas = genericIdeas.map(idea => 
+                  idea.id === variables.id 
+                    ? { ...idea, canvasX: originalIdea.canvasX, canvasY: originalIdea.canvasY }
+                    : idea
+                );
+                queryClient.setQueryData(['/api/ideas'], updatedGenericIdeas);
+              }
+            }
+          }
+          
+          positionUpdateRetriesRef.current.delete(variables.id);
+          activePositionUpdatesRef.current.delete(variables.id);
+          alert('Failed to save card position. Position has been restored.');
+        }
+      } else {
+        // Non-position updates - show generic error
+        alert('Failed to update idea: ' + error.message);
+      }
+      
+      // Always clear active status on error to prevent permanent locks
+      if (activePositionUpdatesRef.current.has(variables.id)) {
+        activePositionUpdatesRef.current.delete(variables.id);
+      }
+    }
   });
 
   // Simple Zoom State (removed animation and wheel handling)
@@ -784,101 +885,6 @@ export default function Canvas() {
       console.error('Update mutation failed:', error);
       alert('Failed to update idea: ' + error.message);
     },
-  });
-
-  const updateIdeaMutation = useMutation({
-    mutationFn: async ({ id, updates }: { id: string, updates: Partial<Idea> }) => {
-      const res = await apiRequest('PATCH', `/api/ideas/${id}`, updates);
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-      return await res.json();
-    },
-    onSuccess: (updatedIdea: Idea, variables) => {
-      // Clear retry count and active update status on successful update
-      const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
-      if (isPositionUpdate) {
-        positionUpdateRetriesRef.current.delete(variables.id);
-        activePositionUpdatesRef.current.delete(variables.id);
-      }
-      
-      // Only skip invalidation for position updates to prevent snap-back
-      if (isPositionUpdate && Object.keys(variables.updates).length <= 2) {
-        return; // Skip invalidation for pure position updates only
-      }
-      
-      // For all other updates (group, title, description, etc.), invalidate queries
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-    },
-    onError: (error, variables) => {
-      console.error('Failed to update idea:', error);
-      
-      // Handle position update failures with retry logic
-      const isPositionUpdate = 'canvasX' in variables.updates || 'canvasY' in variables.updates;
-      if (isPositionUpdate) {
-        const retryCount = positionUpdateRetriesRef.current.get(variables.id) || 0;
-        const maxRetries = 3;
-        
-        if (retryCount < maxRetries) {
-          positionUpdateRetriesRef.current.set(variables.id, retryCount + 1);
-          console.log(`Retrying position update for idea ${variables.id}, attempt ${retryCount + 1}/${maxRetries}`);
-          
-          // Retry with exponential backoff
-          setTimeout(() => {
-            updateIdeaMutation.mutate(variables);
-          }, Math.pow(2, retryCount) * 1000);
-        } else {
-          // Max retries exceeded - rollback position in UI
-          console.error(`Position update failed after ${maxRetries} retries for idea ${variables.id}`);
-          
-          // Find the original idea and restore its position
-          const originalIdea = ideas.find(idea => idea.id === variables.id);
-          if (originalIdea) {
-            // Rollback UI to original position
-            const element = document.querySelector(`[data-idea-id="${variables.id}"]`) as HTMLElement;
-            if (element) {
-              element.style.left = `${originalIdea.canvasX}px`;
-              element.style.top = `${originalIdea.canvasY}px`;
-            }
-            
-            // Update query cache to original position
-            const currentIdeas = queryClient.getQueryData(['/api/ideas', { projectId }]) as Idea[];
-            if (currentIdeas) {
-              const updatedIdeas = currentIdeas.map(idea => 
-                idea.id === variables.id 
-                  ? { ...idea, canvasX: originalIdea.canvasX, canvasY: originalIdea.canvasY }
-                  : idea
-              );
-              queryClient.setQueryData(['/api/ideas', { projectId }], updatedIdeas);
-              
-              // Also update the generic ideas query to maintain consistency
-              const genericIdeas = queryClient.getQueryData(['/api/ideas']) as Idea[];
-              if (genericIdeas) {
-                const updatedGenericIdeas = genericIdeas.map(idea => 
-                  idea.id === variables.id 
-                    ? { ...idea, canvasX: originalIdea.canvasX, canvasY: originalIdea.canvasY }
-                    : idea
-                );
-                queryClient.setQueryData(['/api/ideas'], updatedGenericIdeas);
-              }
-            }
-          }
-          
-          positionUpdateRetriesRef.current.delete(variables.id);
-          activePositionUpdatesRef.current.delete(variables.id);
-          alert('Failed to save card position. Position has been restored.');
-        }
-      } else {
-        // Non-position updates - show generic error
-        alert('Failed to update idea: ' + error.message);
-      }
-      
-      // Always clear active status on error to prevent permanent locks
-      if (activePositionUpdatesRef.current.has(variables.id)) {
-        activePositionUpdatesRef.current.delete(variables.id);
-      }
-    }
   });
 
   const createGroupMutation = useMutation({
@@ -1518,7 +1524,7 @@ export default function Canvas() {
   
   // Project name editing functions
   const startEditingProjectName = () => {
-    setEditingProjectName(currentProject?.name || "");
+    setEditingProjectName((currentProject as Project)?.name || "");
     setIsEditingProjectName(true);
   };
   
@@ -2887,11 +2893,11 @@ export default function Canvas() {
     
     // Compare idea IDs with task idea IDs
     const ideaIds = new Set(groupIdeas.map(idea => idea.id));
-    const taskIdeaIds = new Set(tasksWithIdeas.map(task => task.ideaId));
+    const taskIdeaIds = new Set(tasksWithIdeas.map(task => task.ideaId).filter(id => id !== null));
     
     const needsSync = ideaIds.size !== taskIdeaIds.size || 
                      Array.from(ideaIds).some(id => !taskIdeaIds.has(id)) ||
-                     Array.from(taskIdeaIds).some(id => !ideaIds.has(id));
+                     Array.from(taskIdeaIds).some(id => id && !ideaIds.has(id));
     
     return { 
       needsSync, 
@@ -3431,7 +3437,7 @@ export default function Canvas() {
               title="Group ideas by color"
               data-testid="button-group-ideas"
             >
-              <Group className="w-4 h-4" />
+              <GroupIcon className="w-4 h-4" />
             </Button>
             <Button 
               variant="ghost" 
@@ -3446,7 +3452,7 @@ export default function Canvas() {
               title="Disperse overlapping ideas"
               data-testid="button-disperse-ideas"
             >
-              <Scatter className="w-4 h-4" />
+              <Layers className="w-4 h-4" />
             </Button>
           </div>
 
