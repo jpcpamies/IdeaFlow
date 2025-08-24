@@ -192,8 +192,8 @@ export default function Canvas() {
   const animationFrameRef = useRef<number | null>(null);
   const dragStateRef = useRef<DragState>(dragState);
 
-  // API Queries - filtered by project
-  const { data: ideas = [], isLoading: ideasLoading } = useQuery({
+  // API Queries - filtered by project  
+  const { data: ideas = [], isLoading: ideasLoading, error: ideasError, isError: hasIdeasError } = useQuery({
     queryKey: ['/api/ideas', { projectId }],
     queryFn: async () => {
       const response = await apiRequest('GET', `/api/ideas${
@@ -202,7 +202,9 @@ export default function Canvas() {
       if (!response.ok) throw new Error('Failed to fetch ideas');
       return response.json();
     },
-  }) as { data: Idea[], isLoading: boolean };
+    retry: 2,
+    retryDelay: 1000,
+  }) as { data: Idea[], isLoading: boolean, error: any, isError: boolean };
 
   const { data: groups = [] } = useQuery({
     queryKey: ['/api/groups', { projectId }],
@@ -2458,6 +2460,34 @@ export default function Canvas() {
 
         {/* Center Canvas Area */}
         <main className={`flex-1 relative bg-white overflow-hidden transition-all duration-200 ${!isRightSidebarOpen ? 'mr-4' : ''}`}>
+          {/* Loading Overlay */}
+          {(ideasLoading || projectLoading) && (
+            <div className="absolute inset-0 bg-white/70 backdrop-blur-sm z-50 flex items-center justify-center">
+              <div className="bg-white rounded-lg p-6 shadow-lg flex flex-col items-center space-y-4">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-gray-600">Loading project...</p>
+              </div>
+            </div>
+          )}
+          
+          {/* Error State */}
+          {hasIdeasError && (
+            <div className="absolute inset-0 bg-white/90 backdrop-blur-sm z-40 flex items-center justify-center">
+              <div className="bg-white rounded-lg p-8 shadow-lg text-center max-w-md mx-4">
+                <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <X className="w-6 h-6 text-red-600" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load project</h3>
+                <p className="text-gray-600 mb-6">We couldn't load your project data. Please check your connection and try again.</p>
+                <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 justify-center">
+                  <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+                    Refresh Page
+                  </Button>
+                  <Button onClick={() => navigate('/')} size="sm">Back to Dashboard</Button>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Zoom-Responsive Dot Grid Background - Subtle 1px dots */}
           <div 
             className="absolute inset-0 opacity-30 pointer-events-none"

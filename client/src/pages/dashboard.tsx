@@ -505,11 +505,7 @@ export default function Dashboard() {
                           </div>
                         ) : (
                           <h3 
-                            className="font-medium text-gray-900 cursor-pointer hover:text-primary"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              handleEditProject(project);
-                            }}
+                            className="font-medium text-gray-900"
                             data-testid={`text-project-name-${project.id}`}
                           >
                             {project.name}
@@ -532,13 +528,6 @@ export default function Dashboard() {
                     </Link>
                     
                     <div className="flex items-center space-x-4">
-                      <div className="text-right">
-                        <p className="text-sm text-muted-foreground">Progress</p>
-                        <p className="text-lg font-semibold text-gray-900" data-testid={`text-project-progress-${project.id}`}>
-                          {project.progress}%
-                        </p>
-                      </div>
-                      
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
