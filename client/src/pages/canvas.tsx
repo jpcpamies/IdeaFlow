@@ -808,7 +808,6 @@ export default function Canvas() {
       return response.json();
     },
     onSuccess: () => {
-      console.log('Section reorder mutation successful');
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
     }
@@ -1067,14 +1066,6 @@ export default function Canvas() {
           }
         }
 
-        console.log('Reordering section:', {
-          activeSectionId,
-          overSectionId,
-          activeIndex,
-          overIndex,
-          currentOrder: activeSection.orderIndex,
-          newOrder: newOrderIndex
-        });
 
         reorderSectionMutation.mutate({
           id: activeSectionId,
@@ -3188,21 +3179,73 @@ export default function Canvas() {
 
       {/* TodoList Modal with Advanced Management */}
       <Dialog open={isTodoListModalOpen} onOpenChange={closeTodoListModal}>
-        <DialogContent className="max-w-4xl h-[80vh] flex flex-col">
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col [&>button]:hidden">
           <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{selectedTodoList?.name}</span>
-              <div className="flex items-center space-x-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => selectedTodoList && clearCompletedTasksMutation.mutate(selectedTodoList.id)}
-                  disabled={!todoListTasks.some(task => task.completed)}
-                  data-testid="button-clear-completed"
-                >
-                  Clear Completed
-                </Button>
-              </div>
+            <DialogTitle className="flex items-center justify-between pr-6">
+              {editingTodoListId === selectedTodoList?.id ? (
+                <div className="flex items-center space-x-2 flex-1">
+                  <Input
+                    value={editingTodoListTitle}
+                    onChange={(e) => setEditingTodoListTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveTodoListEdit();
+                      if (e.key === 'Escape') cancelTodoListEdit();
+                    }}
+                    className="flex-1 text-lg font-semibold"
+                    autoFocus
+                    data-testid={`input-edit-todolist-${selectedTodoList?.id}`}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={saveTodoListEdit}
+                    data-testid={`button-save-todolist-${selectedTodoList?.id}`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={cancelTodoListEdit}
+                    data-testid={`button-cancel-todolist-${selectedTodoList?.id}`}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-lg font-semibold">{selectedTodoList?.name}</span>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-gray-200"
+                        data-testid={`button-todolist-options-${selectedTodoList?.id}`}
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => startEditingTodoList(selectedTodoList!)}
+                        data-testid={`button-edit-todolist-${selectedTodoList?.id}`}
+                      >
+                        <Edit className="w-4 h-4 mr-2" />
+                        Edit Title
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => selectedTodoList && clearCompletedTasksMutation.mutate(selectedTodoList.id)}
+                        disabled={!todoListTasks.some(task => task.completed)}
+                        data-testid="button-clear-completed"
+                      >
+                        <Trash className="w-4 h-4 mr-2" />
+                        Clear Completed
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
             </DialogTitle>
           </DialogHeader>
           
