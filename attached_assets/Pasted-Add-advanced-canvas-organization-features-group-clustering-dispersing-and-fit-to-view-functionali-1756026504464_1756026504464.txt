@@ -1,0 +1,43 @@
+Add advanced canvas organization features: group clustering, dispersing, and fit-to-view functionality.
+
+CANVAS ORGANIZATION BUTTONS:
+
+1. Add Two Organization Buttons (below Groups in sidebar):
+   - "Group Ideas" button - clusters cards by color/group
+   - "Disperse Ideas" button - spreads out overlapping cards
+   - Place these buttons in sidebar below the groups list
+
+2. Group Ideas Functionality:
+   - Cluster cards of same group/color together in visual stacks
+   - Stack cards imperfectly (slight offsets) so users can see it's multiple cards
+   - Each stack should show 3-5px offsets between cards to create "pile" effect
+   - Keep stacks compact but visually clear that multiple cards exist
+   - Maintain group color consistency in each cluster
+
+3. Disperse Ideas Functionality:
+   - Spread out all overlapping cards so none overlap
+   - Keep cards of same group/color near each other (form loose zones)
+   - Ensure every card is fully visible and readable
+   - Create logical spacing between different group zones
+   - Use intelligent positioning to avoid collisions
+
+4. Dynamic Canvas with Fit-to-View:
+   - Canvas should automatically expand to accommodate all cards
+   - Add "Fit" button next to zoom controls (+ and - buttons)
+   - Fit button calculates optimal zoom to show all cards in visible area
+   - Display dynamic zoom percentage that updates when using fit
+   - Both "Group Ideas" and "Disperse Ideas" should trigger automatic fit-to-view
+
+5. Zoom Control Enhancements:
+   - Show current zoom percentage (like "80%" in your image)
+   - Fit button icon should be standard fit-to-view symbol
+   - Smooth zoom transitions when using fit functionality
+   - Preserve zoom controls while adding fit capability
+
+6. Smart Positioning Algorithms:
+   - Group Ideas: Calculate cluster centers, stack with offsets
+   - Disperse: Use collision detection to prevent overlaps
+   - Fit-to-View: Calculate bounding box of all cards, optimize zoom
+   - Maintain card positions in database after organization
+
+CRITICAL: The canvas should feel intelligent - automatically adapting to content and providing visual organization that scales with the number of ideas.

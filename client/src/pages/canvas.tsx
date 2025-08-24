@@ -39,7 +39,10 @@ import {
   Edit,
   Trash2,
   ArrowLeft,
-  MoreHorizontal
+  MoreHorizontal,
+  Maximize2,
+  Grid3x3,
+  Shuffle
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea } from "@shared/schema";
@@ -127,8 +130,37 @@ export default function Canvas() {
     ? ideas.filter(idea => idea.groupId === selectedFilter)
     : ideas;
 
-  console.log('Current filter:', selectedFilter);
-  console.log('Filtered ideas:', filteredIdeas.length, 'of', ideas.length);
+  // Helper functions for canvas organization
+  const calculateBoundingBox = (cardIdeas: Idea[]) => {
+    if (cardIdeas.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    
+    const minX = Math.min(...cardIdeas.map(idea => idea.canvasX));
+    const minY = Math.min(...cardIdeas.map(idea => idea.canvasY));
+    const maxX = Math.max(...cardIdeas.map(idea => idea.canvasX + 240)); // Card width
+    const maxY = Math.max(...cardIdeas.map(idea => idea.canvasY + 120)); // Card height
+    
+    return { minX, minY, maxX, maxY };
+  };
+
+  const fitToView = () => {
+    if (filteredIdeas.length === 0) return;
+    
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const bounds = calculateBoundingBox(filteredIdeas);
+    const canvasWidth = canvas.clientWidth;
+    const canvasHeight = canvas.clientHeight;
+    
+    const contentWidth = bounds.maxX - bounds.minX + 100; // Extra padding
+    const contentHeight = bounds.maxY - bounds.minY + 100;
+    
+    const scaleX = canvasWidth / contentWidth;
+    const scaleY = canvasHeight / contentHeight;
+    const optimalZoom = Math.min(scaleX, scaleY, 1) * 100; // Cap at 100%
+    
+    setZoomLevel(Math.max(20, Math.min(200, optimalZoom))); // Keep within bounds
+  };
 
   // Debug logging (remove in production)
   // console.log('Ideas data:', ideas);
@@ -332,6 +364,107 @@ export default function Canvas() {
       id: editingGroup.id,
       updates: { name, color }
     });
+  };
+
+  // Canvas organization functions
+  const handleGroupIdeas = async () => {
+    if (filteredIdeas.length === 0) return;
+    
+    // Group ideas by their group or create ungrouped cluster
+    const groupedIdeas = filteredIdeas.reduce((acc, idea) => {
+      const key = idea.groupId || 'ungrouped';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(idea);
+      return acc;
+    }, {} as Record<string, Idea[]>);
+    
+    // Calculate cluster positions
+    const groupKeys = Object.keys(groupedIdeas);
+    const clustersPerRow = Math.ceil(Math.sqrt(groupKeys.length));
+    const clusterSpacing = 300;
+    
+    const updatePromises: Promise<any>[] = [];
+    
+    groupKeys.forEach((groupKey, index) => {
+      const clusterX = (index % clustersPerRow) * clusterSpacing + 100;
+      const clusterY = Math.floor(index / clustersPerRow) * clusterSpacing + 100;
+      
+      groupedIdeas[groupKey].forEach((idea, cardIndex) => {
+        // Create pile effect with small offsets
+        const offsetX = (cardIndex % 3) * 5;
+        const offsetY = (cardIndex % 3) * 5;
+        const rowOffset = Math.floor(cardIndex / 3) * 15;
+        
+        const newX = clusterX + offsetX;
+        const newY = clusterY + offsetY + rowOffset;
+        
+        updatePromises.push(
+          updateIdeaMutation.mutateAsync({
+            id: idea.id,
+            updates: { canvasX: newX, canvasY: newY }
+          })
+        );
+      });
+    });
+    
+    try {
+      await Promise.all(updatePromises);
+      setTimeout(() => fitToView(), 100); // Delay for DOM updates
+    } catch (error) {
+      console.error('Failed to group ideas:', error);
+    }
+  };
+
+  const handleDisperseIdeas = async () => {
+    if (filteredIdeas.length === 0) return;
+    
+    // Group ideas by their group for zone placement
+    const groupedIdeas = filteredIdeas.reduce((acc, idea) => {
+      const key = idea.groupId || 'ungrouped';
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(idea);
+      return acc;
+    }, {} as Record<string, Idea[]>);
+    
+    const cardWidth = 240;
+    const cardHeight = 120;
+    const padding = 20;
+    const zoneSpacing = 100;
+    
+    const groupKeys = Object.keys(groupedIdeas);
+    const zonesPerRow = Math.ceil(Math.sqrt(groupKeys.length));
+    
+    const updatePromises: Promise<any>[] = [];
+    
+    groupKeys.forEach((groupKey, groupIndex) => {
+      const zoneX = (groupIndex % zonesPerRow) * (cardWidth * 3 + zoneSpacing);
+      const zoneY = Math.floor(groupIndex / zonesPerRow) * (cardHeight * 3 + zoneSpacing);
+      
+      const cardsInGroup = groupedIdeas[groupKey];
+      const cardsPerRow = Math.ceil(Math.sqrt(cardsInGroup.length));
+      
+      cardsInGroup.forEach((idea, cardIndex) => {
+        const row = Math.floor(cardIndex / cardsPerRow);
+        const col = cardIndex % cardsPerRow;
+        
+        const newX = zoneX + col * (cardWidth + padding) + 50;
+        const newY = zoneY + row * (cardHeight + padding) + 50;
+        
+        updatePromises.push(
+          updateIdeaMutation.mutateAsync({
+            id: idea.id,
+            updates: { canvasX: newX, canvasY: newY }
+          })
+        );
+      });
+    });
+    
+    try {
+      await Promise.all(updatePromises);
+      setTimeout(() => fitToView(), 100); // Delay for DOM updates
+    } catch (error) {
+      console.error('Failed to disperse ideas:', error);
+    }
   };
 
   const handleAssignToGroup = async (groupId: string) => {
@@ -891,6 +1024,33 @@ export default function Canvas() {
                 })}
               </div>
             </div>
+
+            {/* Canvas Organization */}
+            <div className="mb-6">
+              <h3 className="text-sm font-medium text-gray-900 mb-3">Organization</h3>
+              <div className="space-y-2">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start text-sm"
+                  onClick={handleGroupIdeas}
+                  disabled={filteredIdeas.length === 0}
+                  data-testid="button-group-ideas"
+                >
+                  <Grid3x3 className="mr-2 w-4 h-4" />
+                  Group Ideas
+                </Button>
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start text-sm"
+                  onClick={handleDisperseIdeas}
+                  disabled={filteredIdeas.length === 0}
+                  data-testid="button-disperse-ideas"
+                >
+                  <Shuffle className="mr-2 w-4 h-4" />
+                  Disperse Ideas
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="p-4 border-t border-gray-200">
@@ -926,7 +1086,7 @@ export default function Canvas() {
               <ZoomOut className="w-4 h-4" />
             </Button>
             <span className="px-2 text-xs text-gray-600 min-w-[3rem] text-center">
-              {zoomLevel}%
+              {Math.round(zoomLevel)}%
             </span>
             <Button
               variant="ghost"
@@ -936,6 +1096,16 @@ export default function Canvas() {
               data-testid="button-zoom-in"
             >
               <ZoomIn className="w-4 h-4" />
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={fitToView}
+              disabled={filteredIdeas.length === 0}
+              title="Fit to view"
+              data-testid="button-fit-to-view"
+            >
+              <Maximize2 className="w-4 h-4" />
             </Button>
           </div>
 
