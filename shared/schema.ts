@@ -213,6 +213,9 @@ export const insertIdeaSchema = createInsertSchema(ideas).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  // Transform empty string groupId to null for "No Group" case
+  groupId: z.string().optional().nullable().transform(val => val === "" ? null : val || null),
 });
 
 export const insertGroupSchema = createInsertSchema(groups).omit({
