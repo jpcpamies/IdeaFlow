@@ -2825,10 +2825,10 @@ export default function Canvas() {
                         size="sm"
                         onClick={() => openTodoListModal(todoList)}
                         className="h-6 w-6 p-0 hover:bg-gray-200"
-                        title="Expand TodoList"
+                        title="TodoList Options"
                         data-testid={`button-expand-todolist-${todoList.id}`}
                       >
-                        <ChevronDown className="w-3 h-3" />
+                        <MoreVertical className="w-3 h-3" />
                       </Button>
                     </div>
                     
@@ -3353,8 +3353,9 @@ export default function Canvas() {
 
           <DialogFooter className="flex justify-between">
             <Button 
-              variant="destructive" 
+              variant="ghost" 
               onClick={() => confirmDeleteTodoList(selectedTodoList!)}
+              className="text-black hover:bg-red-600 hover:text-white transition-colors"
               data-testid="button-delete-todolist"
             >
               <Trash2 className="w-4 h-4 mr-2" />
