@@ -178,6 +178,10 @@ export default function Canvas() {
   const [sectionToDelete, setSectionToDelete] = useState<Section | null>(null);
   const [isSectionDeleteConfirmOpen, setIsSectionDeleteConfirmOpen] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
+
+  // Group deletion confirmation states
+  const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [isGroupDeleteConfirmOpen, setIsGroupDeleteConfirmOpen] = useState(false);
   
   // Form State
   const [newIdeaTitle, setNewIdeaTitle] = useState("");
@@ -2535,11 +2539,26 @@ export default function Canvas() {
   };
 
   const handleDeleteGroup = (groupId: string) => {
-    if (window.confirm('Are you sure you want to delete this group? All ideas in this group will become ungrouped.')) {
-      // Store the group ID for the success callback
-      (deleteGroupMutation as any).deletedGroupId = groupId;
-      deleteGroupMutation.mutate(groupId);
+    const group = groups.find(g => g.id === groupId);
+    if (group) {
+      setGroupToDelete(group);
+      setIsGroupDeleteConfirmOpen(true);
     }
+  };
+
+  const confirmDeleteGroup = () => {
+    if (groupToDelete) {
+      // Store the group ID for the success callback
+      (deleteGroupMutation as any).deletedGroupId = groupToDelete.id;
+      deleteGroupMutation.mutate(groupToDelete.id);
+      setGroupToDelete(null);
+      setIsGroupDeleteConfirmOpen(false);
+    }
+  };
+
+  const cancelDeleteGroup = () => {
+    setGroupToDelete(null);
+    setIsGroupDeleteConfirmOpen(false);
   };
 
   const handleSaveGroupEdit = (name: string, color: string) => {
@@ -4222,6 +4241,31 @@ export default function Canvas() {
               disabled={deleteIdeaMutation.isPending}
             >
               {deleteIdeaMutation.isPending ? 'Deleting...' : (selectedCards.length > 1 ? 'Delete All Ideas' : 'Delete Idea')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Group Delete Confirmation Dialog */}
+      <Dialog open={isGroupDeleteConfirmOpen} onOpenChange={setIsGroupDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Group</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete the group "{groupToDelete?.name}"? All ideas in this group will become ungrouped. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={cancelDeleteGroup}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={confirmDeleteGroup}
+              disabled={deleteGroupMutation.isPending}
+              data-testid="button-confirm-delete-group"
+            >
+              {deleteGroupMutation.isPending ? 'Deleting...' : 'Delete Group'}
             </Button>
           </DialogFooter>
         </DialogContent>
