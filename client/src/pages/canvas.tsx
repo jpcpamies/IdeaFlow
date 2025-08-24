@@ -145,9 +145,6 @@ export default function Canvas() {
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionTitle, setEditingSectionTitle] = useState("");
-  // Separate input state for each section and general tasks
-  const [sectionInputs, setSectionInputs] = useState<Record<string, string>>({});
-  const [generalTaskInput, setGeneralTaskInput] = useState("");
   
   // Task edit dialog states
   const [isTaskEditDialogOpen, setIsTaskEditDialogOpen] = useState(false);
@@ -774,8 +771,6 @@ export default function Canvas() {
         queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
         console.log(`Canvas synchronized: Created idea ${ideaId} for task "${task.title}"`);
       }
-      
-      // Input field is already cleared in addNewTask for better UX
     }
   });
 
@@ -871,26 +866,8 @@ export default function Canvas() {
     })
   );
 
-  // Optimized section input handlers to prevent re-renders
-  const handleSectionInputChange = useCallback((sectionId: string, value: string) => {
-    setSectionInputs(prev => ({ ...prev, [sectionId]: value }));
-  }, []);
 
-  const handleSectionInputKeyDown = useCallback((e: React.KeyboardEvent, sectionId: string) => {
-    if (e.key === 'Enter') addNewTask(sectionId);
-  }, []);
 
-  // Optimized general task input handlers
-  const handleGeneralTaskInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setGeneralTaskInput(e.target.value);
-  }, []);
-
-  const handleGeneralTaskInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      addNewTask();
-    }
-  }, []);
 
   // Section reordering mutation
   const reorderSectionMutation = useMutation({
@@ -1037,8 +1014,6 @@ export default function Canvas() {
     setEditingTaskTitle('');
     setEditingSectionId(null);
     setEditingSectionTitle('');
-    setSectionInputs({});
-    setGeneralTaskInput('');
     setNewSectionName('');
     setSelectedTasks(new Set());
     setBulkActionMode(false);
@@ -1440,26 +1415,6 @@ export default function Canvas() {
     });
   };
 
-  const addNewTask = (sectionId?: string) => {
-    const taskTitle = sectionId ? sectionInputs[sectionId] : generalTaskInput;
-    if (!taskTitle?.trim() || !selectedTodoList) return;
-
-    const maxOrder = Math.max(...todoListTasks.map(task => task.orderIndex || 0), 0);
-    
-    // Clear input immediately for better UX
-    if (sectionId) {
-      setSectionInputs(prev => ({ ...prev, [sectionId]: '' }));
-    } else {
-      setGeneralTaskInput('');
-    }
-    
-    createTaskMutation.mutate({
-      todoListId: selectedTodoList.id,
-      title: taskTitle.trim(),
-      sectionId,
-      orderIndex: maxOrder + 1
-    });
-  };
 
   const addNewSection = () => {
     if (!newSectionName.trim() || !selectedTodoList) return;
@@ -3870,25 +3825,6 @@ export default function Canvas() {
                           </div>
                         )}
 
-                        {/* Add New Task Input */}
-                        <div className="flex space-x-2 p-3 bg-gray-50 rounded-lg">
-                          <Input
-                            placeholder="Add a task..."
-                            value={generalTaskInput}
-                            onChange={handleGeneralTaskInputChange}
-                            onKeyDown={handleGeneralTaskInputKeyDown}
-                            className="flex-1 h-8"
-                            data-testid="input-new-general-task"
-                          />
-                          <Button
-                            size="sm"
-                            onClick={() => addNewTask()}
-                            disabled={!generalTaskInput.trim()}
-                            data-testid="button-add-general-task"
-                          >
-                            <Plus className="w-4 h-4" />
-                          </Button>
-                        </div>
 
                         {/* Completed Tasks */}
                         {completedUnsectioned.length > 0 && (
