@@ -433,18 +433,28 @@ export default function Canvas() {
       // Auto-sync: If idea was added to a group with existing TodoList, sync automatically
       const createdIdea = data;
       if (createdIdea.groupId && projectId) {
-        // Use a timeout to ensure queries are updated first
-        setTimeout(() => {
-          const syncStatus = getGroupSyncStatus(createdIdea.groupId);
-          if (syncStatus.action === 'update' && syncStatus.todoListId) {
-            console.log('Auto-syncing TodoList for new idea in group:', createdIdea.groupId);
-            syncTodoListMutation.mutate({ 
-              groupId: createdIdea.groupId, 
-              todoListId: syncStatus.todoListId, 
-              projectId: projectId 
-            });
-          }
-        }, 500); // Small delay to ensure data is refreshed
+        // Wait for queries to complete then check if sync is needed
+        setTimeout(async () => {
+          // Force query refresh first
+          await queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+          await queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+          await queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+          
+          // Small additional delay to ensure data is fresh
+          setTimeout(() => {
+            const syncStatus = getGroupSyncStatus(createdIdea.groupId);
+            if (syncStatus.action === 'update' && syncStatus.todoListId) {
+              console.log('Auto-syncing TodoList for new idea in group:', createdIdea.groupId);
+              syncTodoListMutation.mutate({ 
+                groupId: createdIdea.groupId, 
+                todoListId: syncStatus.todoListId, 
+                projectId: projectId 
+              });
+            } else {
+              console.log('Sync status:', syncStatus);
+            }
+          }, 300);
+        }, 100);
       }
       
       // Clear all form fields
@@ -630,8 +640,18 @@ export default function Canvas() {
     },
     onSuccess: (result) => {
       console.log('TodoList synced successfully:', result);
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', { projectId }] });
+      
+      // Comprehensive query invalidation to ensure UI updates immediately
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      
+      // Also invalidate specific todoList tasks if we have the ID
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
+      }
+      
       // Automatically open the tasks sidebar to show the updated todo list
       setIsRightSidebarOpen(true);
     },
