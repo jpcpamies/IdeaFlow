@@ -147,6 +147,12 @@ export default function Canvas() {
     lastPan: { x: 0, y: 0 }
   });
 
+  // Native Zoom State
+  const [targetZoomLevel, setTargetZoomLevel] = useState(100);
+  const [isZooming, setIsZooming] = useState(false);
+  const zoomAnimationRef = useRef<number | null>(null);
+  const lastWheelEventRef = useRef<number>(0);
+
   // Drag State
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -320,8 +326,8 @@ export default function Canvas() {
     const centerX = -(bounds.minX - paddingMargin);
     const centerY = -(bounds.minY - paddingMargin);
     
-    // Apply the zoom and reset pan
-    setZoomLevel(finalZoom);
+    // Apply the zoom and reset pan using smooth zoom
+    setTargetZoomLevel(finalZoom);
     setPanState({
       x: centerX,
       y: centerY,
@@ -329,6 +335,9 @@ export default function Canvas() {
       startPan: { x: 0, y: 0 },
       lastPan: { x: centerX, y: centerY }
     });
+    
+    // Use smooth zoom animation for fit-to-view
+    smoothZoomTo(finalZoom);
     
     console.log('Pan reset to center content:', centerX, centerY);
     console.log('=== FIT TO CANVAS COMPLETE ===');
@@ -885,11 +894,164 @@ export default function Canvas() {
 
   // Zoom functions
   const handleZoomIn = () => {
-    setZoomLevel(prev => Math.min(prev + 25, 200));
+    const newZoom = Math.min(zoomLevel + 25, 200);
+    setTargetZoomLevel(newZoom);
+    smoothZoomTo(newZoom);
   };
 
   const handleZoomOut = () => {
-    setZoomLevel(prev => Math.max(prev - 25, 50));
+    const newZoom = Math.max(zoomLevel - 25, 50);
+    setTargetZoomLevel(newZoom);
+    smoothZoomTo(newZoom);
+  };
+
+  // Native zoom functions
+  const smoothZoomTo = (targetZoom: number, centerPoint?: { x: number; y: number }) => {
+    if (zoomAnimationRef.current) {
+      cancelAnimationFrame(zoomAnimationRef.current);
+    }
+
+    const startZoom = zoomLevel;
+    const startTime = performance.now();
+    const duration = 200; // 200ms animation
+
+    setIsZooming(true);
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Easing function (easeOutCubic)
+      const easeProgress = 1 - Math.pow(1 - progress, 3);
+      
+      const currentZoom = startZoom + (targetZoom - startZoom) * easeProgress;
+      
+      if (centerPoint) {
+        // Calculate pan adjustment to keep the cursor position fixed during zoom
+        const zoomRatio = currentZoom / startZoom;
+        
+        // The pan needs to be adjusted so the point under the cursor doesn't move
+        // Formula: newPan = centerPoint - (centerPoint - oldPan) * zoomRatio
+        setPanState(prev => ({
+          ...prev,
+          x: centerPoint.x - (centerPoint.x - prev.x) * zoomRatio,
+          y: centerPoint.y - (centerPoint.y - prev.y) * zoomRatio
+        }));
+      }
+      
+      setZoomLevel(currentZoom);
+      
+      if (progress < 1) {
+        zoomAnimationRef.current = requestAnimationFrame(animate);
+      } else {
+        setIsZooming(false);
+        zoomAnimationRef.current = null;
+      }
+    };
+
+    zoomAnimationRef.current = requestAnimationFrame(animate);
+  };
+
+  const handleWheelZoom = (event: WheelEvent) => {
+    event.preventDefault();
+    
+    // Debounce rapid wheel events
+    const now = performance.now();
+    if (now - lastWheelEventRef.current < 16) { // ~60fps limit
+      return;
+    }
+    lastWheelEventRef.current = now;
+
+    // Get canvas bounds for cursor position calculation
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    
+    const rect = canvas.getBoundingClientRect();
+    const cursorX = event.clientX - rect.left;
+    const cursorY = event.clientY - rect.top;
+    
+    // Convert cursor position to canvas coordinates (accounting for current zoom and pan)
+    // The cursor position needs to be transformed to match the canvas coordinate system
+    const canvasX = cursorX / (zoomLevel / 100) - panState.x;
+    const canvasY = cursorY / (zoomLevel / 100) - panState.y;
+    
+    // Determine zoom direction and intensity
+    let zoomDelta = 0;
+    
+    // Detect trackpad vs mouse wheel
+    if (Math.abs(event.deltaY) < 10 && event.deltaMode === 0) {
+      // Trackpad: smaller, more frequent events
+      zoomDelta = -event.deltaY * 0.5;
+    } else {
+      // Mouse wheel: larger discrete events
+      zoomDelta = -event.deltaY * 2;
+    }
+    
+    // Calculate new zoom level with smooth constraints
+    let newZoom = zoomLevel + zoomDelta;
+    
+    // Apply constraints with visual feedback
+    const wasAtLimit = zoomLevel <= 50 || zoomLevel >= 200;
+    newZoom = Math.min(Math.max(newZoom, 50), 200);
+    
+    // If we're at a zoom limit, provide subtle visual feedback
+    if (newZoom === zoomLevel) {
+      if (!wasAtLimit) {
+        // Show brief visual indication that we've reached a limit
+        const canvas = canvasRef.current;
+        if (canvas) {
+          canvas.style.transition = 'opacity 0.1s ease';
+          canvas.style.opacity = '0.95';
+          setTimeout(() => {
+            canvas.style.opacity = '1';
+            canvas.style.transition = '';
+          }, 100);
+        }
+      }
+      return; // No change needed
+    }
+    
+    setTargetZoomLevel(newZoom);
+    
+    // Calculate the zoom center point for smooth zooming
+    // We want the point under the cursor to remain stationary during zoom
+    const centerPoint = {
+      x: cursorX,
+      y: cursorY
+    };
+    
+    smoothZoomTo(newZoom, centerPoint);
+  };
+
+  // Touch/Pointer events for trackpad gestures
+  const handlePointerDown = (event: React.PointerEvent) => {
+    // Only handle if it's not already being handled by pan/drag
+    if (event.pointerType === 'touch' && !panState.isPanning && !dragState.isDragging) {
+      // Store initial touch point for potential pinch gesture
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  };
+
+  const handleGestureStart = (event: any) => {
+    event.preventDefault();
+    setIsZooming(true);
+  };
+
+  const handleGestureChange = (event: any) => {
+    event.preventDefault();
+    
+    if (!isZooming) return;
+    
+    const scale = event.scale;
+    const newZoom = Math.min(Math.max(targetZoomLevel * scale, 50), 200);
+    
+    setZoomLevel(newZoom);
+    setTargetZoomLevel(newZoom);
+  };
+
+  const handleGestureEnd = (event: any) => {
+    event.preventDefault();
+    setIsZooming(false);
   };
 
   // Idea CRUD functions
@@ -1517,6 +1679,46 @@ export default function Canvas() {
     }
   }, [panState.isPanning]);
 
+  // Native zoom event listeners
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    // Add wheel event listener for zoom
+    canvas.addEventListener('wheel', handleWheelZoom, { passive: false });
+
+    // Add gesture event listeners for Safari/WebKit trackpad gestures
+    const handleGestureStartWrapper = (event: Event) => handleGestureStart(event);
+    const handleGestureChangeWrapper = (event: Event) => handleGestureChange(event);
+    const handleGestureEndWrapper = (event: Event) => handleGestureEnd(event);
+
+    canvas.addEventListener('gesturestart', handleGestureStartWrapper, { passive: false });
+    canvas.addEventListener('gesturechange', handleGestureChangeWrapper, { passive: false });
+    canvas.addEventListener('gestureend', handleGestureEndWrapper, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheelZoom);
+      canvas.removeEventListener('gesturestart', handleGestureStartWrapper);
+      canvas.removeEventListener('gesturechange', handleGestureChangeWrapper);
+      canvas.removeEventListener('gestureend', handleGestureEndWrapper);
+      
+      // Cancel any ongoing zoom animation
+      if (zoomAnimationRef.current) {
+        cancelAnimationFrame(zoomAnimationRef.current);
+        zoomAnimationRef.current = null;
+      }
+    };
+  }, [handleWheelZoom, handleGestureStart, handleGestureChange, handleGestureEnd]);
+
+  // Cleanup zoom animation on unmount
+  useEffect(() => {
+    return () => {
+      if (zoomAnimationRef.current) {
+        cancelAnimationFrame(zoomAnimationRef.current);
+      }
+    };
+  }, []);
+
   // Touch event support for mobile
   const handleTouchStart = (event: React.TouchEvent, cardId: string) => {
     if (event.touches.length !== 1) return;
@@ -1956,6 +2158,8 @@ export default function Canvas() {
             className={`absolute inset-0 overflow-hidden ${panState.isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
             onMouseDown={handleCanvasPanStart}
             onClick={handleCanvasClick}
+            onPointerDown={handlePointerDown}
+            style={{ touchAction: 'none' }}
           >
             {/* Inner canvas with pan and zoom transforms */}
             <div
