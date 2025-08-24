@@ -429,6 +429,24 @@ export default function Canvas() {
       console.log('Mutation succeeded:', data);
       queryClient.invalidateQueries({ queryKey: ['/api/ideas', { projectId }] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups', { projectId }] });
+      
+      // Auto-sync: If idea was added to a group with existing TodoList, sync automatically
+      const createdIdea = data;
+      if (createdIdea.groupId && projectId) {
+        // Use a timeout to ensure queries are updated first
+        setTimeout(() => {
+          const syncStatus = getGroupSyncStatus(createdIdea.groupId);
+          if (syncStatus.action === 'update' && syncStatus.todoListId) {
+            console.log('Auto-syncing TodoList for new idea in group:', createdIdea.groupId);
+            syncTodoListMutation.mutate({ 
+              groupId: createdIdea.groupId, 
+              todoListId: syncStatus.todoListId, 
+              projectId: projectId 
+            });
+          }
+        }, 500); // Small delay to ensure data is refreshed
+      }
+      
       // Clear all form fields
       setNewIdeaTitle("");
       setNewIdeaDescription("");
@@ -2045,12 +2063,12 @@ export default function Canvas() {
   };
 
   const handleDeleteSelectedCards = () => {
-    if (window.confirm(`Are you sure you want to delete ${selectedCards.length} selected ideas?`)) {
-      selectedCards.forEach(id => {
-        deleteIdeaMutation.mutate(id);
-      });
-      setIsGroupActionsModalOpen(false);
-      setSelectedCards([]);
+    // Use proper confirmation dialog like single deletes
+    const firstIdea = ideas.find(i => i.id === selectedCards[0]);
+    if (firstIdea) {
+      // Set the first idea for the dialog and modify the message for bulk
+      setIdeaToDelete({ ...firstIdea, title: `${selectedCards.length} selected ideas` } as Idea);
+      setIsDeleteConfirmOpen(true);
     }
   };
 
@@ -3498,12 +3516,23 @@ export default function Canvas() {
               variant="destructive"
               onClick={() => {
                 if (ideaToDelete) {
-                  deleteIdeaMutation.mutate(ideaToDelete.id);
+                  // Check if this is a bulk delete (multiple selected)
+                  if (selectedCards.length > 1) {
+                    // Bulk delete all selected ideas
+                    selectedCards.forEach(id => {
+                      deleteIdeaMutation.mutate(id);
+                    });
+                    setIsGroupActionsModalOpen(false);
+                    setSelectedCards([]);
+                  } else {
+                    // Single delete
+                    deleteIdeaMutation.mutate(ideaToDelete.id);
+                  }
                 }
               }}
               disabled={deleteIdeaMutation.isPending}
             >
-              {deleteIdeaMutation.isPending ? 'Deleting...' : 'Delete Idea'}
+              {deleteIdeaMutation.isPending ? 'Deleting...' : (selectedCards.length > 1 ? 'Delete All Ideas' : 'Delete Idea')}
             </Button>
           </DialogFooter>
         </DialogContent>
