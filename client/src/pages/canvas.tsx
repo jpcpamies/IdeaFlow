@@ -44,6 +44,7 @@ import {
   MoreVertical,
   Users,
   Edit,
+  Edit2,
   Trash2,
   ArrowLeft,
   MoreHorizontal,
@@ -101,6 +102,10 @@ export default function Canvas() {
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null); // null = "All Ideas"
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
+  const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
+  const [isEditIdeaDialogOpen, setIsEditIdeaDialogOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [ideaToDelete, setIdeaToDelete] = useState<Idea | null>(null);
   
   // Form State
   const [newIdeaTitle, setNewIdeaTitle] = useState("");
@@ -109,6 +114,14 @@ export default function Canvas() {
   const [newIdeaColor, setNewIdeaColor] = useState("#3B82F6");
   const [isCreatingNewGroup, setIsCreatingNewGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  
+  // Edit Form State
+  const [editIdeaTitle, setEditIdeaTitle] = useState("");
+  const [editIdeaDescription, setEditIdeaDescription] = useState("");
+  const [editIdeaGroupId, setEditIdeaGroupId] = useState<string>("");
+  const [editIdeaColor, setEditIdeaColor] = useState("#3B82F6");
+  const [isEditingCreatingNewGroup, setIsEditingCreatingNewGroup] = useState(false);
+  const [editNewGroupName, setEditNewGroupName] = useState("");
   
   // Drag State
   const [dragState, setDragState] = useState<DragState>({
@@ -265,6 +278,41 @@ export default function Canvas() {
     },
   });
 
+  const updateIdeaEditMutation = useMutation({
+    mutationFn: async (data: { id: string; updates: Partial<InsertIdea> }) => {
+      console.log('Updating idea:', data);
+      const res = await apiRequest('PATCH', `/api/ideas/${data.id}`, data.updates);
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        console.error('API error response:', errorData);
+        throw new Error(errorData.message || 'Failed to update idea');
+      }
+      
+      const result = await res.json();
+      console.log('Idea updated successfully:', result);
+      return result;
+    },
+    onSuccess: (data) => {
+      console.log('Update mutation succeeded:', data);
+      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      // Clear edit form fields
+      setEditIdeaTitle("");
+      setEditIdeaDescription("");
+      setEditIdeaGroupId("");
+      setEditIdeaColor("#3B82F6");
+      setIsEditingCreatingNewGroup(false);
+      setEditNewGroupName("");
+      setEditingIdea(null);
+      setIsEditIdeaDialogOpen(false);
+    },
+    onError: (error) => {
+      console.error('Update mutation failed:', error);
+      alert('Failed to update idea: ' + error.message);
+    },
+  });
+
   const updateIdeaMutation = useMutation({
     mutationFn: async ({ id, updates }: { id: string, updates: Partial<Idea> }) => {
       const res = await apiRequest('PATCH', `/api/ideas/${id}`, updates);
@@ -335,11 +383,21 @@ export default function Canvas() {
 
   const deleteIdeaMutation = useMutation({
     mutationFn: async (id: string) => {
+      console.log('Deleting idea:', id);
       const res = await apiRequest('DELETE', `/api/ideas/${id}`);
       return await res.json();
     },
     onSuccess: () => {
+      console.log('Idea deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      setSelectedCards([]);
+      setIdeaToDelete(null);
+      setIsDeleteConfirmOpen(false);
+    },
+    onError: (error) => {
+      console.error('Failed to delete idea:', error);
+      alert('Failed to delete idea: ' + error.message);
     },
   });
 
@@ -454,14 +512,95 @@ export default function Canvas() {
     createIdeaMutation.mutate(ideaData);
   };
 
+  const handleUpdateIdea = async () => {
+    if (!editingIdea || !editIdeaTitle.trim()) return;
+
+    console.log('=== UPDATE IDEA HANDLER CALLED ===');
+    console.log('Editing idea:', editingIdea.id);
+    console.log('Form data:', {
+      title: editIdeaTitle,
+      description: editIdeaDescription,
+      groupId: editIdeaGroupId,
+      color: editIdeaColor,
+      isCreatingNewGroup: isEditingCreatingNewGroup,
+      newGroupName: editNewGroupName
+    });
+
+    let finalGroupId = editIdeaGroupId === "no-group" ? null : editIdeaGroupId;
+    let finalColor = editIdeaColor;
+    
+    // Handle creating new group if selected
+    if (isEditingCreatingNewGroup && editNewGroupName.trim()) {
+      console.log('Creating new group for edit:', editNewGroupName);
+      try {
+        const groupRes = await apiRequest('POST', '/api/groups', {
+          name: editNewGroupName.trim(),
+          color: editIdeaColor
+        });
+        
+        if (!groupRes.ok) {
+          const errorData = await groupRes.json();
+          console.error('Group creation failed:', errorData);
+          
+          if (errorData.message?.includes('already exists') || errorData.message?.includes('duplicate')) {
+            alert('A group with this name already exists. Please choose a different name.');
+          } else {
+            alert('Failed to create group: ' + (errorData.message || 'Unknown error'));
+          }
+          return;
+        }
+        
+        const newGroup = await groupRes.json();
+        console.log('Group created successfully for edit:', newGroup);
+        finalGroupId = newGroup.id;
+        finalColor = newGroup.color;
+      } catch (error) {
+        console.error('Failed to create new group:', error);
+        alert('Failed to create group. Please try again.');
+        return;
+      }
+    } else if (finalGroupId) {
+      // Use existing group's color
+      const selectedGroup = groups.find(g => g.id === finalGroupId);
+      if (selectedGroup) {
+        finalColor = selectedGroup.color;
+      }
+    }
+
+    const updateData = {
+      title: editIdeaTitle.trim(),
+      description: editIdeaDescription.trim(),
+      groupId: finalGroupId,
+      color: finalColor,
+    };
+
+    console.log('Updating idea with data:', updateData);
+    updateIdeaEditMutation.mutate({
+      id: editingIdea.id,
+      updates: updateData
+    });
+  };
+
   const handleEditIdea = (ideaId: string) => {
     console.log('Edit idea:', ideaId);
-    // TODO: Implement edit modal
+    const idea = ideas.find(i => i.id === ideaId);
+    if (idea) {
+      setEditingIdea(idea);
+      setEditIdeaTitle(idea.title);
+      setEditIdeaDescription(idea.description || "");
+      setEditIdeaGroupId(idea.groupId || "");
+      setEditIdeaColor(idea.color);
+      setIsEditingCreatingNewGroup(false);
+      setEditNewGroupName("");
+      setIsEditIdeaDialogOpen(true);
+    }
   };
 
   const handleDeleteIdea = (ideaId: string) => {
-    if (window.confirm("Are you sure you want to delete this idea?")) {
-      deleteIdeaMutation.mutate(ideaId);
+    const idea = ideas.find(i => i.id === ideaId);
+    if (idea) {
+      setIdeaToDelete(idea);
+      setIsDeleteConfirmOpen(true);
     }
   };
 
@@ -1298,7 +1437,7 @@ export default function Canvas() {
                               handleEditIdea(idea.id);
                             }}
                           >
-                            <Edit className="mr-2 w-4 h-4" />
+                            <Edit2 className="mr-2 w-4 h-4" />
                             Edit Idea
                           </DropdownMenuItem>
                           <DropdownMenuItem 
@@ -1306,7 +1445,7 @@ export default function Canvas() {
                               e.stopPropagation();
                               handleDeleteIdea(idea.id);
                             }}
-                            className="text-red-600"
+                            className="text-red-600 focus:text-red-600"
                           >
                             <Trash2 className="mr-2 w-4 h-4" />
                             Delete Idea
@@ -1607,6 +1746,173 @@ export default function Canvas() {
               </DialogFooter>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Idea Dialog */}
+      <Dialog open={isEditIdeaDialogOpen} onOpenChange={setIsEditIdeaDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Edit Idea</DialogTitle>
+            <DialogDescription>
+              Update your idea details and group assignment
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {/* Title Field */}
+            <div className="grid gap-2">
+              <label htmlFor="edit-idea-title" className="text-sm font-medium">
+                Title <span className="text-red-500">*</span>
+              </label>
+              <Input
+                id="edit-idea-title"
+                placeholder="Enter your idea title..."
+                value={editIdeaTitle}
+                onChange={(e) => setEditIdeaTitle(e.target.value.slice(0, 100))}
+                maxLength={100}
+              />
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>{editIdeaTitle.trim() ? '' : 'Title is required'}</span>
+                <span>{editIdeaTitle.length}/100</span>
+              </div>
+            </div>
+
+            {/* Description Field */}
+            <div className="grid gap-2">
+              <label htmlFor="edit-idea-description" className="text-sm font-medium">
+                Description
+              </label>
+              <Textarea
+                id="edit-idea-description"
+                placeholder="Describe your idea in detail..."
+                className="resize-none h-20"
+                value={editIdeaDescription}
+                onChange={(e) => setEditIdeaDescription(e.target.value.slice(0, 500))}
+                maxLength={500}
+              />
+              <div className="text-xs text-gray-500 text-right">
+                {editIdeaDescription.length}/500
+              </div>
+            </div>
+
+            {/* Group Assignment */}
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Group (Optional)</label>
+              <Select value={isEditingCreatingNewGroup ? "create-new" : (editIdeaGroupId || "no-group")} onValueChange={(value) => {
+                if (value === "create-new") {
+                  setIsEditingCreatingNewGroup(true);
+                  setEditIdeaGroupId("");
+                } else if (value === "no-group") {
+                  setIsEditingCreatingNewGroup(false);
+                  setEditIdeaGroupId("");
+                } else {
+                  setIsEditingCreatingNewGroup(false);
+                  setEditIdeaGroupId(value);
+                }
+              }}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a group..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no-group">No Group</SelectItem>
+                  {groups.map((group: Group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      <div className="flex items-center">
+                        <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: group.color }} />
+                        {group.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="create-new">+ Create New Group</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* New Group Name (if creating new) */}
+            {isEditingCreatingNewGroup && (
+              <div className="grid gap-2">
+                <label className="text-sm font-medium">New Group Name</label>
+                <Input
+                  placeholder="Enter group name..."
+                  value={editNewGroupName}
+                  onChange={(e) => setEditNewGroupName(e.target.value.slice(0, 50))}
+                  maxLength={50}
+                />
+                <div className="text-xs text-gray-500 text-right">
+                  {editNewGroupName.length}/50
+                </div>
+              </div>
+            )}
+
+            {/* Color Picker */}
+            <div className="grid gap-2">
+              <label className="text-sm font-medium">Color</label>
+              <div className="flex gap-2">
+                {['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`w-8 h-8 rounded-full border-2 ${
+                      editIdeaColor === color ? 'border-gray-800 ring-2 ring-gray-300' : 'border-gray-300'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setEditIdeaColor(color)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsEditIdeaDialogOpen(false);
+              setEditIdeaTitle("");
+              setEditIdeaDescription("");
+              setEditIdeaGroupId("");
+              setEditIdeaColor("#3B82F6");
+              setIsEditingCreatingNewGroup(false);
+              setEditNewGroupName("");
+              setEditingIdea(null);
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleUpdateIdea} 
+              disabled={!editIdeaTitle.trim() || updateIdeaEditMutation.isPending || (isEditingCreatingNewGroup && !editNewGroupName.trim())}
+            >
+              {updateIdeaEditMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Idea Confirmation Dialog */}
+      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Idea</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{ideaToDelete?.title}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setIsDeleteConfirmOpen(false);
+              setIdeaToDelete(null);
+            }}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => {
+                if (ideaToDelete) {
+                  deleteIdeaMutation.mutate(ideaToDelete.id);
+                }
+              }}
+              disabled={deleteIdeaMutation.isPending}
+            >
+              {deleteIdeaMutation.isPending ? 'Deleting...' : 'Delete Idea'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
