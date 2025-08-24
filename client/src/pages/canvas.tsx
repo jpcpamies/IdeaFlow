@@ -161,6 +161,10 @@ export default function Canvas() {
   // Project name editing states
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState("");
+  
+  // Section deletion confirmation states
+  const [sectionToDelete, setSectionToDelete] = useState<Section | null>(null);
+  const [isSectionDeleteConfirmOpen, setIsSectionDeleteConfirmOpen] = useState(false);
   const [newSectionName, setNewSectionName] = useState("");
   
   // Form State
@@ -1275,6 +1279,41 @@ export default function Canvas() {
       alert('Failed to update project name: ' + error.message);
     }
   });
+  
+  // Section deletion functions
+  const confirmDeleteSection = (deleteOption: 'tasks' | 'move') => {
+    if (!sectionToDelete || !selectedTodoList) return;
+    
+    const sectionTasks = todoListTasks.filter(task => task.sectionId === sectionToDelete.id);
+    
+    if (deleteOption === 'tasks') {
+      // Delete section and all its tasks
+      sectionTasks.forEach(task => {
+        deleteTaskMutation.mutate(task.id);
+      });
+      deleteSectionMutation.mutate(sectionToDelete.id);
+    } else {
+      // Move all tasks to general area (no section) then delete section
+      const unsectionedTasks = todoListTasks.filter(task => !task.sectionId);
+      const maxOrderInGeneral = Math.max(...unsectionedTasks.map(task => task.orderIndex || 0), 0);
+      
+      sectionTasks.forEach((task, index) => {
+        reorderTaskMutation.mutate({
+          id: task.id,
+          orderIndex: maxOrderInGeneral + index + 1,
+          sectionId: null
+        });
+      });
+      
+      // Small delay to ensure task moves complete before deleting section
+      setTimeout(() => {
+        deleteSectionMutation.mutate(sectionToDelete.id);
+      }, 500);
+    }
+    
+    setIsSectionDeleteConfirmOpen(false);
+    setSectionToDelete(null);
+  };
 
   const saveTaskEdit = () => {
     if (!editingTaskId || !editingTaskTitle.trim()) return;
@@ -1561,7 +1600,10 @@ export default function Canvas() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => deleteSectionMutation.mutate(section.id)}
+                      onClick={() => {
+                        setSectionToDelete(section);
+                        setIsSectionDeleteConfirmOpen(true);
+                      }}
                       className="h-6 w-6 p-0 hover:bg-red-200"
                       title="Delete section"
                       data-testid={`button-delete-section-${section.id}`}
@@ -3554,6 +3596,74 @@ export default function Canvas() {
             >
               {deleteIdeaMutation.isPending ? 'Deleting...' : (selectedCards.length > 1 ? 'Delete All Ideas' : 'Delete Idea')}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Section Confirmation Dialog */}
+      <Dialog open={isSectionDeleteConfirmOpen} onOpenChange={setIsSectionDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Section</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                if (!sectionToDelete) return "Are you sure you want to delete this section?";
+                const sectionTasks = todoListTasks.filter(task => task.sectionId === sectionToDelete.id);
+                if (sectionTasks.length === 0) {
+                  return `Are you sure you want to delete the section "${sectionToDelete.name}"? This action cannot be undone.`;
+                }
+                return `The section "${sectionToDelete.name}" contains ${sectionTasks.length} task${sectionTasks.length > 1 ? 's' : ''}. What would you like to do with ${sectionTasks.length > 1 ? 'them' : 'it'}?`;
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col space-y-2 sm:space-y-0 sm:flex-row">
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setIsSectionDeleteConfirmOpen(false);
+                setSectionToDelete(null);
+              }}
+              data-testid="button-cancel-delete-section"
+            >
+              Cancel
+            </Button>
+            {(() => {
+              if (!sectionToDelete) return null;
+              const sectionTasks = todoListTasks.filter(task => task.sectionId === sectionToDelete.id);
+              if (sectionTasks.length === 0) {
+                return (
+                  <Button 
+                    variant="destructive"
+                    onClick={() => confirmDeleteSection('tasks')}
+                    disabled={deleteSectionMutation.isPending}
+                    data-testid="button-delete-empty-section"
+                  >
+                    {deleteSectionMutation.isPending ? 'Deleting...' : 'Delete Section'}
+                  </Button>
+                );
+              }
+              return (
+                <>
+                  <Button 
+                    variant="outline"
+                    onClick={() => confirmDeleteSection('move')}
+                    disabled={reorderTaskMutation.isPending || deleteSectionMutation.isPending}
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                    data-testid="button-move-tasks-delete-section"
+                  >
+                    Move Tasks & Delete Section
+                  </Button>
+                  <Button 
+                    variant="destructive"
+                    onClick={() => confirmDeleteSection('tasks')}
+                    disabled={deleteTaskMutation.isPending || deleteSectionMutation.isPending}
+                    data-testid="button-delete-section-and-tasks"
+                  >
+                    Delete Section & All Tasks
+                  </Button>
+                </>
+              );
+            })()}
           </DialogFooter>
         </DialogContent>
       </Dialog>
