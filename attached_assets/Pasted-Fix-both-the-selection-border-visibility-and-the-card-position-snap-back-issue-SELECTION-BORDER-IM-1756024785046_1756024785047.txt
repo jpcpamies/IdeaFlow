@@ -1,0 +1,49 @@
+Fix both the selection border visibility and the card position snap-back issue.
+
+SELECTION BORDER IMPROVEMENTS:
+
+1. Bold Blue Border:
+   - Selected cards: thick blue border (3-4px solid #3B82F6)
+   - Border should be clearly visible against card background
+   - Use box-shadow for additional emphasis: 0 0 0 3px rgba(59, 130, 246, 0.3)
+   - Ensure border doesn't affect card positioning or layout
+
+2. Visual Contrast Enhancement:
+   - Make sure blue border stands out against all card colors
+   - Add subtle blue glow/shadow effect around selected cards
+   - Maintain card content readability with strong border
+   - Border should be visible on both light and dark themed cards
+
+3. Selection State Styling:
+   - Clear visual difference between selected and unselected states
+   - Selected state should be immediately obvious to users
+   - Smooth transition when selection changes (0.2s ease)
+   - Border style should match the reference image provided
+
+POSITION PERSISTENCE FIX:
+
+4. Drag Position Bug Resolution:
+   - Cards must stay in their new position after drag ends - no snap-back to original position
+   - Update local state immediately when drag ends, before database call
+   - Ensure position updates are committed to database successfully
+   - Handle any database update failures gracefully without position revert
+
+5. Position Update Logic:
+   - On drag end: immediately update card position in UI state
+   - Simultaneously save new position to database (canvas_x, canvas_y)
+   - If database save fails, show error but keep new position in UI
+   - Never revert to old position after successful drag operation
+
+6. Debug Position Issues:
+   - Add error handling for position updates
+   - Ensure drag calculations are accurate relative to canvas
+   - Verify position state management doesn't cause conflicts
+   - Test that multiple rapid drags don't cause position confusion
+
+CRITICAL REQUIREMENTS:
+- Bold, prominent blue selection border immediately visible
+- Cards NEVER return to previous position after being dragged
+- Position changes are permanent and persistent
+- Smooth drag experience without position glitches
+
+Fix both the visual selection feedback and the position snap-back problem.

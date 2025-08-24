@@ -79,7 +79,7 @@ const mockTodoLists = [
 ];
 
 export default function Canvas() {
-  const { user } = useAuth();
+  const { user } = useAuth() as { user: any };
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLDivElement>(null);
   
@@ -113,11 +113,11 @@ export default function Canvas() {
   // API Queries
   const { data: ideas = [], isLoading: ideasLoading } = useQuery({
     queryKey: ['/api/ideas'],
-  });
+  }) as { data: Idea[], isLoading: boolean };
 
   const { data: groups = [] } = useQuery({
     queryKey: ['/api/groups'],
-  });
+  }) as { data: Group[] };
 
   // Debug logging (remove in production)
   // console.log('Ideas data:', ideas);
@@ -143,9 +143,13 @@ export default function Canvas() {
       const res = await apiRequest('PATCH', `/api/ideas/${id}`, updates);
       return await res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+    onSuccess: (updatedIdea: Idea, variables) => {
+      // Don't invalidate queries to prevent snap-back, position is already updated locally
     },
+    onError: (error) => {
+      console.error('Failed to save position:', error);
+      // Optionally show toast notification for failed saves
+    }
   });
 
   const deleteIdeaMutation = useMutation({
@@ -426,6 +430,18 @@ export default function Canvas() {
           }
         }, 200);
         
+        // Update local state immediately to prevent snap-back
+        const ideaIndex = ideas.findIndex(idea => idea.id === cardId);
+        if (ideaIndex !== -1) {
+          const updatedIdeas = [...ideas];
+          updatedIdeas[ideaIndex] = { 
+            ...updatedIdeas[ideaIndex], 
+            canvasX: finalPos.x, 
+            canvasY: finalPos.y 
+          };
+          queryClient.setQueryData(['/api/ideas'], updatedIdeas);
+        }
+
         // Save to database (only once per card)
         updateIdeaMutation.mutate({
           id: cardId,
@@ -744,16 +760,19 @@ export default function Canvas() {
                 <Card 
                   key={idea.id}
                   data-card-id={idea.id}
-                  className={`absolute w-64 shadow-md hover:shadow-lg transition-all cursor-pointer border-2 ${
+                  className={`absolute w-64 shadow-md hover:shadow-lg transition-all cursor-pointer ${
                     isSelected 
-                      ? 'border-blue-500 shadow-blue-200' 
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-4 border-blue-500 shadow-lg shadow-blue-500/30' 
+                      : 'border-2 border-gray-200 hover:border-gray-300'
                   }`}
-                  style={{ 
-                    left: idea.canvasX, 
+                  style={{
+                    left: idea.canvasX,
                     top: idea.canvasY,
                     backgroundColor: cardColor,
-                    cursor: dragState.isDragging ? 'grabbing' : 'pointer'
+                    cursor: dragState.isDragging ? 'grabbing' : 'pointer',
+                    ...(isSelected && {
+                      boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.3), 0 10px 15px -3px rgba(0, 0, 0, 0.1)'
+                    })
                   }}
                   onClick={(e) => handleCardClick(idea.id, e)}
                   onMouseDown={(e) => handleMouseDown(e, idea.id)}
