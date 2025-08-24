@@ -2636,6 +2636,28 @@ export default function Canvas() {
                 height: '10000px'
               }}
             >
+            {/* Empty State Feedback */}
+            {filteredIdeas.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="text-center p-8 max-w-md">
+                  <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-primary/10 to-secondary/10 rounded-full flex items-center justify-center">
+                    <Lightbulb className="w-8 h-8 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                    Ready to brainstorm?
+                  </h3>
+                  <p className="text-muted-foreground mb-6 leading-relaxed">
+                    Start capturing your ideas by creating your first idea card. 
+                    Click the <strong>"+ New Idea"</strong> button above to begin your creative journey.
+                  </p>
+                  <div className="flex items-center justify-center space-x-2 text-sm text-muted-foreground bg-gray-50 px-4 py-2 rounded-lg">
+                    <Lightbulb className="w-4 h-4" />
+                    <span>Ideas can be moved, grouped, and turned into tasks</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Idea Cards */}
             {filteredIdeas.map((idea: Idea) => {
               const isSelected = selectedCards.includes(idea.id);
