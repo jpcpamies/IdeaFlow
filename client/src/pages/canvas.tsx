@@ -244,8 +244,12 @@ export default function Canvas() {
   };
 
   const handleAssignToGroup = (groupId: string) => {
-    console.log('Assign cards to group:', selectedCards, groupId);
-    // TODO: Implement group assignment
+    selectedCards.forEach(cardId => {
+      updateIdeaMutation.mutate({
+        id: cardId,
+        updates: { groupId }
+      });
+    });
     setIsAssignGroupModalOpen(false);
     setIsGroupActionsModalOpen(false);
     setSelectedCards([]);
@@ -258,7 +262,12 @@ export default function Canvas() {
   };
 
   const handleRemoveFromGroups = () => {
-    console.log('Remove cards from all groups:', selectedCards);
+    selectedCards.forEach(cardId => {
+      updateIdeaMutation.mutate({
+        id: cardId,
+        updates: { groupId: null }
+      });
+    });
     setIsGroupActionsModalOpen(false);
     setSelectedCards([]);
   };
@@ -269,6 +278,13 @@ export default function Canvas() {
         deleteIdeaMutation.mutate(id);
       });
       setIsGroupActionsModalOpen(false);
+      setSelectedCards([]);
+    }
+  };
+
+  const handleCanvasClick = (event: React.MouseEvent) => {
+    // Only deselect if clicking directly on canvas, not on cards or other elements
+    if (event.target === event.currentTarget) {
       setSelectedCards([]);
     }
   };
@@ -286,6 +302,9 @@ export default function Canvas() {
     // Don't start drag if clicking on menu buttons
     const target = event.target as HTMLElement;
     if (target.closest('button')) return;
+    
+    // Prevent drag when using Cmd/Ctrl+click for multi-select
+    if (event.metaKey || event.ctrlKey) return;
     
     event.preventDefault();
     event.stopPropagation();
@@ -749,6 +768,7 @@ export default function Canvas() {
               width: `${10000 / (zoomLevel / 100)}px`,
               height: `${10000 / (zoomLevel / 100)}px`
             }}
+            onClick={handleCanvasClick}
           >
             {/* Idea Cards */}
             {ideas.map((idea: Idea) => {
