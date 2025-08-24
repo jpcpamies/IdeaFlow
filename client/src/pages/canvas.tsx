@@ -950,9 +950,12 @@ export default function Canvas() {
                   {/* Group Assignment */}
                   <div className="grid gap-2">
                     <label className="text-sm font-medium">Group (Optional)</label>
-                    <Select value={isCreatingNewGroup ? "create-new" : newIdeaGroupId} onValueChange={(value) => {
+                    <Select value={isCreatingNewGroup ? "create-new" : (newIdeaGroupId || "no-group")} onValueChange={(value) => {
                       if (value === "create-new") {
                         setIsCreatingNewGroup(true);
+                        setNewIdeaGroupId("");
+                      } else if (value === "no-group") {
+                        setIsCreatingNewGroup(false);
                         setNewIdeaGroupId("");
                       } else {
                         setIsCreatingNewGroup(false);
@@ -963,7 +966,7 @@ export default function Canvas() {
                         <SelectValue placeholder="Select a group..." />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">No Group</SelectItem>
+                        <SelectItem value="no-group">No Group</SelectItem>
                         {groups.map((group: Group) => (
                           <SelectItem key={group.id} value={group.id}>
                             <div className="flex items-center">
