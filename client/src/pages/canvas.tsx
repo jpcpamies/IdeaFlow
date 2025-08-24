@@ -2629,8 +2629,12 @@ export default function Canvas() {
                   Ideas can be moved around, organized into groups, and turned into actionable tasks.
                 </p>
                 <Button 
-                  onClick={() => setIsNewIdeaDialogOpen(true)}
-                  className="bg-primary hover:bg-primary/90 text-white px-6 py-3 text-lg"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsNewIdeaDialogOpen(true);
+                  }}
+                  className="bg-primary hover:bg-primary/90 text-white px-6 py-3 text-lg relative z-50"
                   data-testid="button-create-first-idea"
                 >
                   <Plus className="mr-2 w-5 h-5" />
