@@ -105,6 +105,15 @@ export default function Canvas() {
   const [isEditingCreatingNewGroup, setIsEditingCreatingNewGroup] = useState(false);
   const [editNewGroupName, setEditNewGroupName] = useState("");
   
+  // Canvas Panning State
+  const [panState, setPanState] = useState({
+    x: 0,
+    y: 0,
+    isPanning: false,
+    startPan: { x: 0, y: 0 },
+    lastPan: { x: 0, y: 0 }
+  });
+
   // Drag State
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
@@ -933,6 +942,50 @@ export default function Canvas() {
     });
   };
 
+  // Canvas panning handlers
+  const handleCanvasPanStart = (event: React.MouseEvent) => {
+    // Only start panning with left mouse button and when not clicking on cards
+    if (event.button !== 0) return;
+    
+    const target = event.target as HTMLElement;
+    // Don't pan if clicking on cards, buttons, or other interactive elements
+    if (target.closest('[data-card-id]') || target.closest('button') || target !== event.currentTarget) {
+      return;
+    }
+    
+    event.preventDefault();
+    event.stopPropagation();
+    
+    setPanState(prev => ({
+      ...prev,
+      isPanning: true,
+      startPan: { x: event.clientX, y: event.clientY },
+      lastPan: { x: prev.x, y: prev.y }
+    }));
+  };
+
+  const handleCanvasPanMove = (event: React.MouseEvent) => {
+    if (!panState.isPanning) return;
+    
+    event.preventDefault();
+    
+    const deltaX = event.clientX - panState.startPan.x;
+    const deltaY = event.clientY - panState.startPan.y;
+    
+    setPanState(prev => ({
+      ...prev,
+      x: prev.lastPan.x + deltaX,
+      y: prev.lastPan.y + deltaY
+    }));
+  };
+
+  const handleCanvasPanEnd = () => {
+    setPanState(prev => ({
+      ...prev,
+      isPanning: false
+    }));
+  };
+
   const handleMouseUp = () => {
     const currentDragState = dragStateRef.current;
     if (!currentDragState.isDragging) return;
@@ -1393,9 +1446,9 @@ export default function Canvas() {
           <div 
             className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
-              backgroundImage: `radial-gradient(circle, #E5E7EB 2px, transparent 2px)`,
-              backgroundSize: `${50 * (zoomLevel / 100)}px ${50 * (zoomLevel / 100)}px`,
-              backgroundPosition: '0 0'
+              backgroundImage: `radial-gradient(circle, rgba(229, 231, 235, 0.6) 2px, transparent 2px)`,
+              backgroundSize: `${24 * (zoomLevel / 100)}px ${24 * (zoomLevel / 100)}px`,
+              backgroundPosition: `${panState.x}px ${panState.y}px`
             }}
           />
 
@@ -1413,10 +1466,8 @@ export default function Canvas() {
             </Button>
           )}
 
-          {/* Zoom Controls */}
-          <div className={`absolute top-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10 ${
-            isRightSidebarOpen ? 'right-4' : 'right-20'
-          }`}>
+          {/* Zoom Controls - Bottom Right */}
+          <div className="absolute bottom-4 right-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10">
             <Button
               variant="ghost"
               size="sm"
@@ -1465,15 +1516,23 @@ export default function Canvas() {
           {/* Canvas Content */}
           <div 
             ref={canvasRef}
-            className="absolute inset-0 p-8 overflow-auto"
-            style={{ 
-              transform: `scale(${zoomLevel / 100})`,
-              transformOrigin: 'top left',
-              width: `${10000 / (zoomLevel / 100)}px`,
-              height: `${10000 / (zoomLevel / 100)}px`
-            }}
+            className={`absolute inset-0 overflow-hidden ${panState.isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+            onMouseDown={handleCanvasPanStart}
+            onMouseMove={handleCanvasPanMove}
+            onMouseUp={handleCanvasPanEnd}
+            onMouseLeave={handleCanvasPanEnd}
             onClick={handleCanvasClick}
           >
+            {/* Inner canvas with pan and zoom transforms */}
+            <div
+              className="absolute"
+              style={{
+                transform: `translate(${panState.x}px, ${panState.y}px) scale(${zoomLevel / 100})`,
+                transformOrigin: '0 0',
+                width: '10000px',
+                height: '10000px'
+              }}
+            >
             {/* Idea Cards */}
             {filteredIdeas.map((idea: Idea) => {
               const isSelected = selectedCards.includes(idea.id);
@@ -1587,18 +1646,19 @@ export default function Canvas() {
               </div>
             )}
 
-            {/* Canvas Instructions */}
-            {ideas.length === 0 && (
-              <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-                <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
-                  <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">Infinite Canvas</h3>
-                  <p className="text-sm text-gray-600">
-                    Drag ideas around • Zoom to explore • Cmd/Ctrl+click to multi-select
-                  </p>
+              {/* Canvas Instructions */}
+              {ideas.length === 0 && (
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
+                  <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
+                    <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Infinite Canvas</h3>
+                    <p className="text-sm text-gray-600">
+                      Drag ideas around • Zoom to explore • Cmd/Ctrl+click to multi-select
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </main>
 
