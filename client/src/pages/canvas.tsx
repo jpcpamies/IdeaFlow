@@ -150,11 +150,8 @@ export default function Canvas() {
     lastPan: { x: 0, y: 0 }
   });
 
-  // Native Zoom State
-  const [targetZoomLevel, setTargetZoomLevel] = useState(100);
-  const [isZooming, setIsZooming] = useState(false);
-  const zoomAnimationRef = useRef<number | null>(null);
-  const lastWheelEventRef = useRef<number>(0);
+  // Simple Zoom State (removed animation and wheel handling)
+  // Only keep the basic zoom level
 
   // Drag State
   const [dragState, setDragState] = useState<DragState>({
@@ -284,36 +281,31 @@ export default function Canvas() {
     // Calculate precise content boundaries
     const bounds = calculateBoundingBox(filteredIdeas);
     
-    // Get ACTUAL viewport dimensions (visible canvas area)
-    // Account for sidebar: when sidebar is open, canvas has less width
+    // Get actual available canvas space (accounts for margins and sidebar automatically)
     const viewportWidth = canvasContainer.clientWidth;
     const viewportHeight = canvasContainer.clientHeight;
-    console.log('Canvas container dimensions:', viewportWidth, 'x', viewportHeight);
-    console.log('Sidebar affects available width:', isRightSidebarOpen ? 'YES' : 'NO');
+    console.log('Available canvas space:', viewportWidth, 'x', viewportHeight);
+    console.log('Right sidebar open:', isRightSidebarOpen ? 'YES' : 'NO');
     
-    // Account for the actual available space based on sidebar state
-    // When sidebar is hidden, we have more horizontal space available
-    let effectiveViewportWidth = viewportWidth;
-    if (!isRightSidebarOpen) {
-      // Sidebar was 320px wide (w-80), so we have that extra space
-      effectiveViewportWidth = viewportWidth + 320;
-      console.log('Sidebar hidden - using expanded width:', effectiveViewportWidth);
-    }
+    // Canvas now automatically expands when sidebar is closed due to flexbox layout
+    // and has proper breathing room margins applied via CSS classes
+    const effectiveViewportWidth = viewportWidth;
+    const effectiveViewportHeight = viewportHeight;
     
     // Calculate content dimensions
     const contentWidth = bounds.maxX - bounds.minX;
     const contentHeight = bounds.maxY - bounds.minY;
     console.log('Raw content dimensions:', contentWidth, 'x', contentHeight);
     
-    // Add padding margin (125px on all sides)
-    const paddingMargin = 125;
+    // Add 50px margin around all cards as requested
+    const paddingMargin = 50;
     const paddedWidth = contentWidth + (paddingMargin * 2);
     const paddedHeight = contentHeight + (paddingMargin * 2);
     console.log('Content with padding:', paddedWidth, 'x', paddedHeight);
     
-    // Calculate zoom percentage needed to fit content using effective viewport width
+    // Calculate zoom percentage needed to fit content
     const zoomRatioX = effectiveViewportWidth / paddedWidth;
-    const zoomRatioY = viewportHeight / paddedHeight;
+    const zoomRatioY = effectiveViewportHeight / paddedHeight;
     console.log('Zoom ratios - X:', zoomRatioX.toFixed(3), 'Y:', zoomRatioY.toFixed(3));
     
     // Use the smaller ratio to ensure all content fits
@@ -321,28 +313,32 @@ export default function Canvas() {
     const optimalZoomPercent = optimalZoomRatio * 100;
     console.log('Optimal zoom ratio:', optimalZoomRatio.toFixed(3), '(', optimalZoomPercent.toFixed(1), '%)');
     
-    // Apply zoom bounds (15% minimum, 200% maximum)
-    const finalZoom = Math.max(15, Math.min(200, optimalZoomPercent));
-    console.log('Final zoom after bounds:', finalZoom.toFixed(1), '%');
+    // Apply zoom bounds (25% minimum, 400% maximum, rounded to 25% increments)
+    let finalZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, optimalZoomPercent));
+    finalZoom = Math.round(finalZoom / ZOOM_STEP) * ZOOM_STEP;
+    console.log('Final zoom after bounds and rounding:', finalZoom, '%');
     
-    // Reset pan to center the content
-    const centerX = -(bounds.minX - paddingMargin);
-    const centerY = -(bounds.minY - paddingMargin);
+    // Apply zoom immediately (no animation)
+    setZoomLevel(finalZoom);
     
-    // Apply the zoom and reset pan using smooth zoom
-    setTargetZoomLevel(finalZoom);
+    // Calculate centered pan position for the content
+    const centerX = (bounds.minX + bounds.maxX) / 2;
+    const centerY = (bounds.minY + bounds.maxY) / 2;
+    
+    // Center the content in the available canvas space
+    const newPanX = (effectiveViewportWidth / 2) - (centerX * (finalZoom / 100));
+    const newPanY = (effectiveViewportHeight / 2) - (centerY * (finalZoom / 100));
+    
+    // Apply centered pan position
     setPanState({
-      x: centerX,
-      y: centerY,
+      x: newPanX,
+      y: newPanY,
       isPanning: false,
       startPan: { x: 0, y: 0 },
-      lastPan: { x: centerX, y: centerY }
+      lastPan: { x: newPanX, y: newPanY }
     });
     
-    // Use smooth zoom animation for fit-to-view
-    smoothZoomTo(finalZoom);
-    
-    console.log('Pan reset to center content:', centerX, centerY);
+    console.log('Content centered at pan position:', newPanX.toFixed(1), ',', newPanY.toFixed(1));
     console.log('=== FIT TO CANVAS COMPLETE ===');
   };
 
@@ -1030,129 +1026,24 @@ export default function Canvas() {
   };
 
   // Zoom constants
-  const ZOOM_MIN = 20;
-  const ZOOM_MAX = 500;
-  const ZOOM_STEP = 10;
+  const ZOOM_MIN = 25;
+  const ZOOM_MAX = 400;
+  const ZOOM_STEP = 25;
 
-  // Zoom functions
+  // Simple zoom functions - 25% increments, instant changes
   const handleZoomIn = () => {
     const newZoom = Math.min(zoomLevel + ZOOM_STEP, ZOOM_MAX);
-    setTargetZoomLevel(newZoom);
-    smoothZoomTo(newZoom);
+    setZoomLevel(newZoom);
   };
 
   const handleZoomOut = () => {
     const newZoom = Math.max(zoomLevel - ZOOM_STEP, ZOOM_MIN);
-    setTargetZoomLevel(newZoom);
-    smoothZoomTo(newZoom);
+    setZoomLevel(newZoom);
   };
 
-  // Clean, simple zoom animation
-  const smoothZoomTo = (targetZoom: number, centerPoint?: { x: number; y: number }) => {
-    // Cancel any existing animation
-    if (zoomAnimationRef.current) {
-      cancelAnimationFrame(zoomAnimationRef.current);
-    }
+  // Removed complex zoom animation - using instant zoom changes only
 
-    // Clamp target zoom to valid range
-    targetZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, targetZoom));
-
-    const startZoom = zoomLevel;
-    const startTime = performance.now();
-    const duration = 150; // Faster, more responsive animation
-
-    setIsZooming(true);
-
-    const animate = (currentTime: number) => {
-      const elapsed = currentTime - startTime;
-      const progress = Math.min(elapsed / duration, 1);
-      
-      // Smooth easing (easeOutQuart for snappy feel)
-      const easeProgress = 1 - Math.pow(1 - progress, 4);
-      
-      const currentZoom = startZoom + (targetZoom - startZoom) * easeProgress;
-      
-      // Handle cursor-centered zoom
-      if (centerPoint && startZoom !== currentZoom) {
-        const scale = currentZoom / startZoom;
-        const canvas = canvasRef.current;
-        if (canvas) {
-          const rect = canvas.getBoundingClientRect();
-          const centerX = centerPoint.x;
-          const centerY = centerPoint.y;
-          
-          // Calculate new pan to keep point under cursor
-          setPanState(prev => {
-            const newX = centerX - (centerX - prev.x) * scale;
-            const newY = centerY - (centerY - prev.y) * scale;
-            return {
-              ...prev,
-              x: newX,
-              y: newY,
-              lastPan: { x: newX, y: newY }
-            };
-          });
-        }
-      }
-      
-      setZoomLevel(currentZoom);
-      
-      if (progress < 1) {
-        zoomAnimationRef.current = requestAnimationFrame(animate);
-      } else {
-        setIsZooming(false);
-        zoomAnimationRef.current = null;
-        setTargetZoomLevel(targetZoom);
-      }
-    };
-
-    zoomAnimationRef.current = requestAnimationFrame(animate);
-  };
-
-  // Simplified, robust wheel zoom handler
-  const handleWheelZoom = (event: WheelEvent) => {
-    event.preventDefault();
-    
-    // Throttle rapid wheel events for performance
-    const now = performance.now();
-    if (now - lastWheelEventRef.current < 16) { // ~60fps limit
-      return;
-    }
-    lastWheelEventRef.current = now;
-
-    // Get cursor position relative to canvas
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    
-    const rect = canvas.getBoundingClientRect();
-    const centerPoint = {
-      x: event.clientX - rect.left,
-      y: event.clientY - rect.top
-    };
-    
-    // Determine zoom delta based on input type
-    let zoomDelta = 0;
-    
-    // Smart detection: trackpad vs mouse wheel
-    if (Math.abs(event.deltaY) < 15 && event.deltaMode === 0) {
-      // Trackpad: smooth, precise control
-      zoomDelta = -event.deltaY * 0.8;
-    } else {
-      // Mouse wheel: discrete steps
-      zoomDelta = -event.deltaY * 0.3;
-    }
-    
-    // Calculate new zoom level
-    const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoomLevel + zoomDelta));
-    
-    // Only zoom if there's an actual change
-    if (Math.abs(newZoom - zoomLevel) < 0.1) {
-      return;
-    }
-    
-    setTargetZoomLevel(newZoom);
-    smoothZoomTo(newZoom, centerPoint);
-  };
+  // Removed wheel/scroll zoom functionality - using button-only zoom
 
   // Clean up old gesture handlers - wheel events handle all zoom interactions
   // Simplified approach: rely on wheel events for all zoom functionality
@@ -1782,33 +1673,9 @@ export default function Canvas() {
     }
   }, [panState.isPanning]);
 
-  // Native zoom event listeners
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+  // Removed wheel event listeners for simplified zoom
 
-    // Add wheel event listener for zoom
-    canvas.addEventListener('wheel', handleWheelZoom, { passive: false });
-
-    return () => {
-      canvas.removeEventListener('wheel', handleWheelZoom);
-      
-      // Cancel any ongoing zoom animation
-      if (zoomAnimationRef.current) {
-        cancelAnimationFrame(zoomAnimationRef.current);
-        zoomAnimationRef.current = null;
-      }
-    };
-  }, [handleWheelZoom]);
-
-  // Cleanup zoom animation on unmount
-  useEffect(() => {
-    return () => {
-      if (zoomAnimationRef.current) {
-        cancelAnimationFrame(zoomAnimationRef.current);
-      }
-    };
-  }, []);
+  // Removed animation cleanup (no longer using animations)
 
   // Touch event support for mobile
   const handleTouchStart = (event: React.TouchEvent, cardId: string) => {
@@ -2171,7 +2038,7 @@ export default function Canvas() {
         </aside>
 
         {/* Center Canvas Area */}
-        <main className="flex-1 relative bg-white overflow-hidden">
+        <main className={`flex-1 relative bg-white overflow-hidden transition-all duration-200 ${!isRightSidebarOpen ? 'mr-4' : ''}`}>
           {/* Zoom-Responsive Dot Grid Background - Subtle 1px dots */}
           <div 
             className="absolute inset-0 opacity-30 pointer-events-none"
@@ -2243,10 +2110,14 @@ export default function Canvas() {
             </div>
           )}
 
-          {/* Canvas Content */}
+          {/* Canvas Content with breathing room margins */}
           <div 
             ref={canvasRef}
-            className={`absolute inset-0 overflow-hidden ${panState.isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+            className={`absolute overflow-hidden ${panState.isPanning ? 'cursor-grabbing' : 'cursor-grab'} ${
+              !isRightSidebarOpen 
+                ? 'inset-6' // Extra margin when sidebar is closed (24px all sides)
+                : 'inset-4' // Standard margin when sidebar is open (16px all sides)
+            }`}
             onMouseDown={handleCanvasPanStart}
             onClick={handleCanvasClick}
             style={{ touchAction: 'none' }}
