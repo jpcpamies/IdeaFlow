@@ -808,7 +808,9 @@ export default function Canvas() {
       return response.json();
     },
     onSuccess: () => {
+      console.log('Section reorder mutation successful');
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
     }
   });
 
@@ -1036,9 +1038,47 @@ export default function Canvas() {
       const overSection = todoListSections.find(section => section.id === overSectionId);
       
       if (activeSection && overSection && activeSectionId !== overSectionId) {
+        // Sort sections by current order to get proper positioning
+        const sortedSections = [...todoListSections].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        const activeIndex = sortedSections.findIndex(section => section.id === activeSectionId);
+        const overIndex = sortedSections.findIndex(section => section.id === overSectionId);
+        
+        // Calculate new order index based on drop position
+        let newOrderIndex: number;
+        
+        if (overIndex === 0) {
+          // Moving to first position
+          newOrderIndex = Math.max(0, (overSection.orderIndex || 0) - 1);
+        } else if (activeIndex < overIndex) {
+          // Moving down in the list
+          const nextSection = sortedSections[overIndex + 1];
+          if (nextSection) {
+            newOrderIndex = ((overSection.orderIndex || 0) + (nextSection.orderIndex || 0)) / 2;
+          } else {
+            newOrderIndex = (overSection.orderIndex || 0) + 1;
+          }
+        } else {
+          // Moving up in the list
+          const prevSection = sortedSections[overIndex - 1];
+          if (prevSection) {
+            newOrderIndex = ((prevSection.orderIndex || 0) + (overSection.orderIndex || 0)) / 2;
+          } else {
+            newOrderIndex = (overSection.orderIndex || 0) - 1;
+          }
+        }
+
+        console.log('Reordering section:', {
+          activeSectionId,
+          overSectionId,
+          activeIndex,
+          overIndex,
+          currentOrder: activeSection.orderIndex,
+          newOrder: newOrderIndex
+        });
+
         reorderSectionMutation.mutate({
           id: activeSectionId,
-          orderIndex: overSection.orderIndex || 0
+          orderIndex: newOrderIndex
         });
       }
     }
