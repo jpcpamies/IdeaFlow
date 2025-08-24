@@ -3239,7 +3239,7 @@ export default function Canvas() {
                         disabled={!todoListTasks.some(task => task.completed)}
                         data-testid="button-clear-completed"
                       >
-                        <Trash className="w-4 h-4 mr-2" />
+                        <Trash2 className="w-4 h-4 mr-2" />
                         Clear Completed
                       </DropdownMenuItem>
                     </DropdownMenuContent>
