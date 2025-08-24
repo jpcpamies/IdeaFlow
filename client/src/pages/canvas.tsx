@@ -155,6 +155,10 @@ export default function Canvas() {
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDescription, setEditTaskDescription] = useState("");
   
+  // Task deletion confirmation states
+  const [isTaskDeleteConfirmOpen, setIsTaskDeleteConfirmOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState<Task | null>(null);
+  
   // Task expansion states (for showing description)
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   
@@ -1233,14 +1237,15 @@ export default function Canvas() {
   
   // Delete task with confirmation
   const confirmDeleteTask = (task: Task) => {
-    const linkedIdea = task.ideaId ? ideas.find(idea => idea.id === task.ideaId) : null;
-    const message = linkedIdea 
-      ? `Delete task "${task.title}"? This will also remove the linked idea card from the canvas.`
-      : `Delete task "${task.title}"?`;
-      
-    if (confirm(message)) {
-      deleteTaskMutation.mutate(task.id);
-    }
+    setTaskToDelete(task);
+    setIsTaskDeleteConfirmOpen(true);
+  };
+
+  const executeTaskDeletion = () => {
+    if (!taskToDelete) return;
+    deleteTaskMutation.mutate(taskToDelete.id);
+    setIsTaskDeleteConfirmOpen(false);
+    setTaskToDelete(null);
   };
   
   // Update project mutation
@@ -4033,6 +4038,65 @@ export default function Canvas() {
               data-testid="button-create-standalone-group"
             >
               Create Group
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* TodoList Deletion Confirmation Modal */}
+      <Dialog open={deleteTodoListConfirmOpen} onOpenChange={setDeleteTodoListConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete TodoList</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{todoListToDelete?.name}"? This action cannot be undone and will remove all tasks in this list.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteTodoListConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={executeTodoListDeletion}
+              disabled={deleteTodoListMutation.isPending}
+              data-testid="button-confirm-delete-todolist"
+            >
+              {deleteTodoListMutation.isPending ? 'Deleting...' : 'Delete TodoList'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Deletion Confirmation Modal */}
+      <Dialog open={isTaskDeleteConfirmOpen} onOpenChange={setIsTaskDeleteConfirmOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete Task</DialogTitle>
+            <DialogDescription>
+              {taskToDelete?.ideaId && ideas?.find(idea => idea.id === taskToDelete.ideaId) ? (
+                <>
+                  Are you sure you want to delete "{taskToDelete?.title}"? 
+                  This will also remove the linked idea card from the canvas.
+                </>
+              ) : (
+                <>
+                  Are you sure you want to delete "{taskToDelete?.title}"?
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTaskDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={executeTaskDeletion}
+              disabled={deleteTaskMutation.isPending}
+              data-testid="button-confirm-delete-task"
+            >
+              {deleteTaskMutation.isPending ? 'Deleting...' : 'Delete Task'}
             </Button>
           </DialogFooter>
         </DialogContent>
