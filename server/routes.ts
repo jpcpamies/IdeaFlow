@@ -524,6 +524,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Sync TodoList with group changes (add/remove tasks based on ideas)
+  app.patch("/api/todolists/:id/sync", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      const { groupId, projectId } = req.body;
+      
+      if (!groupId || !projectId) {
+        return res.status(400).json({ message: "Group ID and project ID are required" });
+      }
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      // Get current group ideas
+      const groupIdeas = await storage.getProjectIdeas(userId, projectId);
+      const currentIdeas = groupIdeas.filter(idea => idea.groupId === groupId);
+      
+      // Get current tasks in the TodoList
+      const currentTasks = await storage.getTodoListTasks(id);
+      const tasksWithIdeas = currentTasks.filter(task => task.ideaId);
+      
+      // Create sets for comparison
+      const ideaIds = new Set(currentIdeas.map(idea => idea.id));
+      const taskIdeaIds = new Set(tasksWithIdeas.map(task => task.ideaId));
+      
+      let addedCount = 0;
+      let removedCount = 0;
+      
+      // Add tasks for new ideas
+      for (const idea of currentIdeas) {
+        if (!taskIdeaIds.has(idea.id)) {
+          const maxOrder = Math.max(0, ...currentTasks.map(t => t.orderIndex || 0));
+          await storage.createTask({
+            todoListId: id,
+            ideaId: idea.id,
+            title: idea.title,
+            completed: false,
+            orderIndex: maxOrder + 1 + addedCount,
+          });
+          addedCount++;
+        }
+      }
+      
+      // Remove tasks for deleted ideas  
+      for (const task of tasksWithIdeas) {
+        if (task.ideaId && !ideaIds.has(task.ideaId)) {
+          await storage.deleteTask(task.id);
+          removedCount++;
+        }
+      }
+      
+      res.json({ 
+        message: "TodoList synced successfully",
+        todoListId: id,
+        added: addedCount,
+        removed: removedCount
+      });
+    } catch (error) {
+      console.error("Error syncing todo list:", error);
+      res.status(500).json({ message: "Failed to sync todo list" });
+    }
+  });
+
   // Archive/Unarchive TodoList
   app.patch("/api/todolists/:id/archive", isAuthenticated, async (req: any, res) => {
     try {

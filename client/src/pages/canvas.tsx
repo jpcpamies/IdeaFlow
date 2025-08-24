@@ -59,7 +59,8 @@ import {
   Copy,
   Archive,
   Undo,
-  CheckSquare
+  CheckSquare,
+  RefreshCw
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea, TodoList, InsertTodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
@@ -585,6 +586,30 @@ export default function Canvas() {
     onError: (error) => {
       console.error('Failed to create TodoList:', error);
       alert('Failed to create TodoList. Please try again.');
+    }
+  });
+  
+  // Sync TodoList with group changes
+  const syncTodoListMutation = useMutation({
+    mutationFn: async ({ groupId, todoListId, projectId }: { groupId: string; todoListId: string; projectId: string }) => {
+      console.log('Syncing TodoList:', todoListId, 'with group:', groupId);
+      const response = await apiRequest('PATCH', `/api/todolists/${todoListId}/sync`, { groupId, projectId });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to sync TodoList');
+      }
+      return response.json();
+    },
+    onSuccess: (result) => {
+      console.log('TodoList synced successfully:', result);
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', { projectId }] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      // Automatically open the tasks sidebar to show the updated todo list
+      setIsRightSidebarOpen(true);
+    },
+    onError: (error) => {
+      console.error('Failed to sync TodoList:', error);
+      alert('Failed to sync TodoList: ' + error.message);
     }
   });
 
@@ -2188,20 +2213,54 @@ export default function Canvas() {
   }, [dragState.isDragging]);
 
   // Task toggle function
-  // Create TodoList from group
-  const handleCreateTodoList = async (groupId: string) => {
-    console.log('Creating TodoList from group:', groupId);
-    const group = groups.find(g => g.id === groupId);
-    if (!group) return;
-    
-    // Check if group has ideas
+  // Check if group TodoList needs sync
+  const getGroupSyncStatus = (groupId: string) => {
     const groupIdeas = ideas.filter(idea => idea.groupId === groupId);
-    if (groupIdeas.length === 0) {
-      alert('This group has no ideas to convert to tasks.');
-      return;
+    const groupTodoList = todoLists.find(tl => tl.groupId === groupId);
+    
+    if (!groupTodoList) {
+      return { needsSync: false, action: 'create', ideaCount: groupIdeas.length };
     }
     
-    createTodoListMutation.mutate({ groupId, name: group.name, projectId: projectId! });
+    // Get tasks for this TodoList from the tasks query
+    const todoListTasks = allTasks.filter(task => task.todoListId === groupTodoList.id);
+    const tasksWithIdeas = todoListTasks.filter(task => task.ideaId);
+    
+    // Compare idea IDs with task idea IDs
+    const ideaIds = new Set(groupIdeas.map(idea => idea.id));
+    const taskIdeaIds = new Set(tasksWithIdeas.map(task => task.ideaId));
+    
+    const needsSync = ideaIds.size !== taskIdeaIds.size || 
+                     Array.from(ideaIds).some(id => !taskIdeaIds.has(id)) ||
+                     Array.from(taskIdeaIds).some(id => !ideaIds.has(id));
+    
+    return { 
+      needsSync, 
+      action: needsSync ? 'update' : 'synced', 
+      ideaCount: groupIdeas.length,
+      todoListId: groupTodoList.id
+    };
+  };
+  
+  // Create or Update TodoList from group
+  const handleCreateTodoList = async (groupId: string) => {
+    const syncStatus = getGroupSyncStatus(groupId);
+    
+    if (syncStatus.action === 'create') {
+      console.log('Creating TodoList from group:', groupId);
+      const group = groups.find(g => g.id === groupId);
+      if (!group) return;
+      
+      if (syncStatus.ideaCount === 0) {
+        alert('This group has no ideas to convert to tasks.');
+        return;
+      }
+      
+      createTodoListMutation.mutate({ groupId, name: group.name, projectId: projectId! });
+    } else if (syncStatus.action === 'update') {
+      console.log('Updating TodoList for group:', groupId);
+      syncTodoListMutation.mutate({ groupId, todoListId: syncStatus.todoListId!, projectId: projectId! });
+    }
   };
 
   // Toggle task completion
@@ -2484,12 +2543,34 @@ export default function Canvas() {
                               <Edit className="mr-2 w-3 h-3" />
                               Edit Group
                             </DropdownMenuItem>
-                            {groupIdeaCount > 0 && (
-                              <DropdownMenuItem onClick={() => handleCreateTodoList(group.id)}>
-                                <Plus className="mr-2 w-3 h-3" />
-                                Create TodoList
-                              </DropdownMenuItem>
-                            )}
+                            {(() => {
+                              const syncStatus = getGroupSyncStatus(group.id);
+                              if (syncStatus.ideaCount === 0) return null;
+                              
+                              const isCreate = syncStatus.action === 'create';
+                              const isUpdate = syncStatus.action === 'update';
+                              const isSynced = syncStatus.action === 'synced';
+                              
+                              if (isCreate || isUpdate) {
+                                return (
+                                  <DropdownMenuItem onClick={() => handleCreateTodoList(group.id)}>
+                                    {isCreate ? <Plus className="mr-2 w-3 h-3" /> : <RefreshCw className="mr-2 w-3 h-3" />}
+                                    {isCreate ? 'Create TodoList' : 'Update TodoList'}
+                                  </DropdownMenuItem>
+                                );
+                              }
+                              
+                              if (isSynced) {
+                                return (
+                                  <DropdownMenuItem disabled className="text-gray-400">
+                                    <Check className="mr-2 w-3 h-3" />
+                                    TodoList Synced
+                                  </DropdownMenuItem>
+                                );
+                              }
+                              
+                              return null;
+                            })()}
                             <DropdownMenuItem 
                               onClick={() => handleDeleteGroup(group.id)}
                               className="text-red-600"
