@@ -1592,7 +1592,7 @@ export default function Canvas() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-6 w-6 p-0 hover:bg-gray-200"
+                          className="h-6 w-6 p-0 hover:bg-gray-200 text-gray-600 hover:text-gray-800"
                           onClick={(e) => e.stopPropagation()}
                           data-testid={`section-menu-${section.id}`}
                         >
