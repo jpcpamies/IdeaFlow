@@ -49,7 +49,7 @@ export default function Navigation({
             <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
               <Palette className="text-white w-4 h-4" />
             </div>
-            <span className="text-xl font-bold text-gray-900">Canvas Ideas</span>
+            <span className="text-xl font-bold text-gray-900">Brain Storm to ToDo List</span>
           </Link>
 
           {!isAuthenticated ? (

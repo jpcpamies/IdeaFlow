@@ -21,7 +21,7 @@ export default function Landing() {
               <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
                 <Palette className="text-white w-4 h-4" />
               </div>
-              <span className="text-xl font-bold text-gray-900">Canvas Ideas</span>
+              <span className="text-xl font-bold text-gray-900">Brain Storm to ToDo List</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
               <a href="#features" className="text-muted-foreground hover:text-gray-900 transition-colors">Features</a>
@@ -46,7 +46,7 @@ export default function Landing() {
           <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
             <div className="lg:col-span-6">
               <h1 className="text-4xl md:text-6xl font-bold text-gray-900 leading-tight">
-                Canvas Ideas
+                Brain Storm to ToDo List
               </h1>
               <p className="text-xl md:text-2xl text-muted-foreground mt-4 mb-8">
                 Transform brainstorming into actionable tasks

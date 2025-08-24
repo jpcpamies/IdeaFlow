@@ -1,8 +1,8 @@
-# Canvas Ideas
+# Brain Storm to ToDo List
 
 ## Overview
 
-Canvas Ideas is a collaborative visual project management application that combines an interactive canvas interface with task management capabilities. The system allows users to create projects, visualize their ideas on a digital canvas using various drawing tools, and manage associated tasks. The application features a React frontend with Express backend, using PostgreSQL for data persistence and Replit's authentication system for user management.
+Brain Storm to ToDo List is a collaborative visual project management application that combines an interactive canvas interface with task management capabilities. The system allows users to create projects, visualize their ideas on a digital canvas using various drawing tools, and manage associated tasks. The application features a React frontend with Express backend, using PostgreSQL for data persistence and Replit's authentication system for user management.
 
 ## User Preferences
 

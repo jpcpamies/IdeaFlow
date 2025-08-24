@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRoute, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -101,6 +102,15 @@ export default function Canvas() {
   const { user } = useAuth() as { user: any };
   const queryClient = useQueryClient();
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [, params] = useRoute("/canvas/:projectId");
+  const [, navigate] = useLocation();
+  const projectId = params?.projectId;
+  
+  // Get current project data
+  const { data: currentProject, isLoading: projectLoading } = useQuery({
+    queryKey: ['/api/projects', projectId],
+    enabled: !!projectId,
+  });
   
   // UI State
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(true);
@@ -182,18 +192,39 @@ export default function Canvas() {
   const animationFrameRef = useRef<number | null>(null);
   const dragStateRef = useRef<DragState>(dragState);
 
-  // API Queries
+  // API Queries - filtered by project
   const { data: ideas = [], isLoading: ideasLoading } = useQuery({
-    queryKey: ['/api/ideas'],
+    queryKey: ['/api/ideas', { projectId }],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/ideas${
+        projectId ? `?projectId=${projectId}` : ''
+      }`);
+      if (!response.ok) throw new Error('Failed to fetch ideas');
+      return response.json();
+    },
   }) as { data: Idea[], isLoading: boolean };
 
   const { data: groups = [] } = useQuery({
-    queryKey: ['/api/groups'],
+    queryKey: ['/api/groups', { projectId }],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/groups${
+        projectId ? `?projectId=${projectId}` : ''
+      }`);
+      if (!response.ok) throw new Error('Failed to fetch groups');
+      return response.json();
+    },
   }) as { data: Group[] };
 
-  // Fetch TodoLists for the current user
+  // Fetch TodoLists for the current project
   const { data: todoLists = [] } = useQuery({
-    queryKey: ['/api/todolists'],
+    queryKey: ['/api/todolists', { projectId }],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/todolists${
+        projectId ? `?projectId=${projectId}` : ''
+      }`);
+      if (!response.ok) throw new Error('Failed to fetch todolists');
+      return response.json();
+    },
   }) as { data: TodoList[] };
 
   // Fetch tasks for TodoLists
@@ -2150,10 +2181,23 @@ export default function Canvas() {
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 h-16 flex items-center justify-between px-6 flex-shrink-0">
         <div className="flex items-center space-x-3">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => navigate('/')}
+            className="flex items-center space-x-2"
+            data-testid="button-back-to-dashboard"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Dashboard</span>
+          </Button>
+          <ChevronRight className="w-4 h-4 text-gray-400" />
           <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
             <Palette className="text-white w-5 h-5" />
           </div>
-          <h1 className="text-xl font-bold text-gray-900">Canvas Ideas</h1>
+          <h1 className="text-xl font-bold text-gray-900">
+            {projectLoading ? 'Loading...' : currentProject?.name || 'Brain Storm to ToDo List'}
+          </h1>
         </div>
         
         <div className="flex items-center space-x-4">
@@ -2622,13 +2666,21 @@ export default function Canvas() {
 
               {/* Canvas Instructions */}
               {ideas.length === 0 && (
-                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center pointer-events-none">
-                  <div className="bg-white/80 backdrop-blur-sm rounded-lg p-6 shadow-sm">
-                    <Target className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">Infinite Canvas</h3>
-                    <p className="text-sm text-gray-600">
-                      Drag ideas around • Zoom to explore • Cmd/Ctrl+click to multi-select
+                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+                  <div className="bg-white/90 backdrop-blur-sm rounded-lg p-8 shadow-lg max-w-md">
+                    <Lightbulb className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-xl font-medium text-gray-900 mb-3">No ideas yet</h3>
+                    <p className="text-sm text-gray-600 mb-6">
+                      Start your creative journey by adding your first idea to the canvas
                     </p>
+                    <Button 
+                      onClick={() => setIsNewIdeaDialogOpen(true)}
+                      className="bg-primary text-white hover:bg-primary/90 pointer-events-auto"
+                      data-testid="button-create-first-idea"
+                    >
+                      <Plus className="mr-2 w-4 h-4" />
+                      Create your first idea
+                    </Button>
                   </div>
                 </div>
               )}

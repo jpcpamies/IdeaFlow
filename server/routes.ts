@@ -243,7 +243,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/ideas', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;
-      const ideas = await storage.getUserIdeas(userId);
+      const projectId = req.query.projectId;
+      let ideas = await storage.getUserIdeas(userId);
+      
+      // TODO: Filter by projectId when schema is updated
+      // For now, return all ideas (no filtering)
+      
       res.json(ideas);
     } catch (error) {
       console.error("Error fetching ideas:", error);
