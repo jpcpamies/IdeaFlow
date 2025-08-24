@@ -3604,36 +3604,6 @@ export default function Canvas() {
             >
               <Maximize2 className="w-4 h-4" />
             </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={(e) => {
-                console.log('Group Ideas button clicked');
-                e.preventDefault();
-                e.stopPropagation();
-                groupIdeas();
-              }}
-              disabled={filteredIdeas.length === 0}
-              title="Group ideas by color"
-              data-testid="button-group-ideas"
-            >
-              <GroupIcon className="w-4 h-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={(e) => {
-                console.log('Disperse Ideas button clicked');
-                e.preventDefault();
-                e.stopPropagation();
-                disperseIdeas();
-              }}
-              disabled={filteredIdeas.length === 0}
-              title="Disperse overlapping ideas"
-              data-testid="button-disperse-ideas"
-            >
-              <Layers className="w-4 h-4" />
-            </Button>
           </div>
 
           {/* Multi-Selection Counter */}
