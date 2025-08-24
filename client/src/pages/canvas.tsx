@@ -169,32 +169,32 @@ export default function Canvas() {
       return;
     }
     
-    const canvas = canvasRef.current;
-    if (!canvas) {
-      console.log('Canvas reference not available - operation cancelled');
+    const canvasContainer = canvasRef.current?.parentElement;
+    if (!canvasContainer) {
+      console.log('Canvas container not available - operation cancelled');
       return;
     }
     
     // Calculate precise content boundaries
     const bounds = calculateBoundingBox(filteredIdeas);
     
-    // Get viewport dimensions
-    const viewportWidth = canvas.clientWidth;
-    const viewportHeight = canvas.clientHeight;
-    console.log('Viewport dimensions:', viewportWidth, 'x', viewportHeight);
+    // Get ACTUAL viewport dimensions (visible canvas area)
+    const viewportWidth = canvasContainer.clientWidth;
+    const viewportHeight = canvasContainer.clientHeight;
+    console.log('Actual viewport dimensions:', viewportWidth, 'x', viewportHeight);
     
     // Calculate content dimensions
     const contentWidth = bounds.maxX - bounds.minX;
     const contentHeight = bounds.maxY - bounds.minY;
     console.log('Raw content dimensions:', contentWidth, 'x', contentHeight);
     
-    // Add adequate padding (125px on all sides)
+    // Add padding margin (125px on all sides)
     const paddingMargin = 125;
     const paddedWidth = contentWidth + (paddingMargin * 2);
     const paddedHeight = contentHeight + (paddingMargin * 2);
     console.log('Content with padding:', paddedWidth, 'x', paddedHeight);
     
-    // Calculate optimal zoom ratios
+    // Calculate zoom percentage needed to fit content
     const zoomRatioX = viewportWidth / paddedWidth;
     const zoomRatioY = viewportHeight / paddedHeight;
     console.log('Zoom ratios - X:', zoomRatioX.toFixed(3), 'Y:', zoomRatioY.toFixed(3));
@@ -204,8 +204,8 @@ export default function Canvas() {
     const optimalZoomPercent = optimalZoomRatio * 100;
     console.log('Optimal zoom ratio:', optimalZoomRatio.toFixed(3), '(', optimalZoomPercent.toFixed(1), '%)');
     
-    // Apply zoom bounds (20% minimum, 200% maximum)
-    const finalZoom = Math.max(20, Math.min(200, optimalZoomPercent));
+    // Apply zoom bounds (15% minimum, 200% maximum)
+    const finalZoom = Math.max(15, Math.min(200, optimalZoomPercent));
     console.log('Final zoom after bounds:', finalZoom.toFixed(1), '%');
     
     // Apply the zoom
@@ -987,15 +987,13 @@ export default function Canvas() {
 
         {/* Center Canvas Area */}
         <main className="flex-1 relative bg-white overflow-hidden">
-          {/* Grid Background */}
+          {/* Zoom-Responsive Dot Grid Background */}
           <div 
-            className="absolute inset-0 opacity-20"
+            className="absolute inset-0 opacity-30 pointer-events-none"
             style={{
-              backgroundImage: `
-                linear-gradient(rgba(0,0,0,0.1) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(0,0,0,0.1) 1px, transparent 1px)
-              `,
-              backgroundSize: '20px 20px'
+              backgroundImage: `radial-gradient(circle, #E5E7EB 2px, transparent 2px)`,
+              backgroundSize: `${50 * (zoomLevel / 100)}px ${50 * (zoomLevel / 100)}px`,
+              backgroundPosition: '0 0'
             }}
           />
 
