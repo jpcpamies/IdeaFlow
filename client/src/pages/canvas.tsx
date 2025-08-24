@@ -1399,8 +1399,24 @@ export default function Canvas() {
             }}
           />
 
+          {/* Toggle Sidebar Button (when sidebar is hidden) */}
+          {!isRightSidebarOpen && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRightSidebarOpen(true)}
+              className="absolute top-4 right-4 bg-white shadow-md z-10"
+              data-testid="button-show-sidebar"
+            >
+              <ClipboardList className="w-4 h-4 mr-2" />
+              Tasks
+            </Button>
+          )}
+
           {/* Zoom Controls */}
-          <div className="absolute top-4 right-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10">
+          <div className={`absolute top-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10 ${
+            isRightSidebarOpen ? 'right-4' : 'right-20'
+          }`}>
             <Button
               variant="ghost"
               size="sm"
@@ -1587,9 +1603,8 @@ export default function Canvas() {
         </main>
 
         {/* Right Sidebar - To-Do Lists */}
-        <aside className={`w-80 bg-white border-l border-gray-200 flex flex-col transition-transform duration-300 ${
-          isRightSidebarOpen ? 'translate-x-0' : 'translate-x-80'
-        }`}>
+        {isRightSidebarOpen && (
+        <aside className="w-80 bg-white border-l border-gray-200 flex flex-col">
           <div className="p-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">To-Do Lists</h2>
@@ -1677,6 +1692,7 @@ export default function Canvas() {
             </div>
           </div>
         </aside>
+        )}
 
       </div>
 
