@@ -755,6 +755,21 @@ export default function Canvas() {
     if (e.key === 'Enter') addNewTask(sectionId);
   }, []);
 
+  // Section reordering mutation
+  const reorderSectionMutation = useMutation({
+    mutationFn: async ({ id, orderIndex }: { id: string; orderIndex: number }) => {
+      const response = await apiRequest('PATCH', `/api/sections/${id}`, { orderIndex });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to reorder section');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+    }
+  });
+
   // TodoList Modal Functions
   const openTodoListModal = (todoList: TodoList) => {
     setSelectedTodoList(todoList);
@@ -833,6 +848,21 @@ export default function Canvas() {
           id: activeTask.id,
           orderIndex: maxOrderInGeneral + 1,
           sectionId: null
+        });
+      }
+    }
+    // Handle section-to-section (reordering sections)
+    else if (activeId.startsWith('section-') && overId.startsWith('section-')) {
+      const activeSectionId = activeId.replace('section-', '');
+      const overSectionId = overId.replace('section-', '');
+      
+      const activeSection = todoListSections.find(section => section.id === activeSectionId);
+      const overSection = todoListSections.find(section => section.id === overSectionId);
+      
+      if (activeSection && overSection && activeSectionId !== overSectionId) {
+        reorderSectionMutation.mutate({
+          id: activeSectionId,
+          orderIndex: overSection.orderIndex || 0
         });
       }
     }
@@ -952,6 +982,117 @@ export default function Canvas() {
         style={{ minHeight: '40px' }}
       >
         {children}
+      </div>
+    );
+  };
+
+  // SortableSectionItem Component - makes sections draggable for reordering
+  const SortableSectionItem = ({ section, sectionTasks, children }: { section: Section; sectionTasks: Task[]; children: React.ReactNode }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: `section-${section.id}` });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.8 : 1,
+    };
+
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className={`${isDragging ? 'z-50 shadow-2xl' : ''}`}
+      >
+        <DroppableSection sectionId={section.id}>
+          <div className="border rounded-lg p-4 bg-white">
+            {/* Section Header with drag handle */}
+            <div className="flex items-center justify-between mb-3">
+              {editingSectionId === section.id ? (
+                <div className="flex items-center space-x-2 flex-1">
+                  <Input
+                    value={editingSectionTitle}
+                    onChange={(e) => setEditingSectionTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') saveSectionEdit();
+                      if (e.key === 'Escape') cancelSectionEdit();
+                    }}
+                    className="flex-1 h-8"
+                    autoFocus
+                    data-testid={`input-edit-section-${section.id}`}
+                  />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={saveSectionEdit}
+                    data-testid={`button-save-section-${section.id}`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={cancelSectionEdit}
+                    data-testid={`button-cancel-section-${section.id}`}
+                  >
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center space-x-2">
+                    {/* Drag handle */}
+                    <div {...attributes} {...listeners} className="cursor-grab hover:cursor-grabbing p-1">
+                      <GripVertical className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+                    </div>
+                    <button
+                      className="flex items-center space-x-2 text-left hover:text-gray-600"
+                      onClick={() => toggleSection(section.id)}
+                      data-testid={`button-toggle-section-${section.id}`}
+                    >
+                      {collapsedSections.has(section.id) ? (
+                        <ChevronRight className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                      <h3 className="font-medium text-gray-800">
+                        {section.name} ({sectionTasks.length})
+                      </h3>
+                    </button>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => startEditingSection(section)}
+                      className="h-6 w-6 p-0 hover:bg-gray-200"
+                      title="Edit section name"
+                      data-testid={`button-edit-section-${section.id}`}
+                    >
+                      <Settings className="w-3 h-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => deleteSectionMutation.mutate(section.id)}
+                      className="h-6 w-6 p-0 hover:bg-red-200"
+                      title="Delete section"
+                      data-testid={`button-delete-section-${section.id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+            {children}
+          </div>
+        </DroppableSection>
       </div>
     );
   };
@@ -2743,91 +2884,21 @@ export default function Canvas() {
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-6">
-                {/* Render Sections */}
-                {todoListSections
-                  .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-                  .map((section) => {
-                    const sectionTasks = todoListTasks
-                      .filter(task => task.sectionId === section.id)
-                      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-                    
-                    const completedTasks = sectionTasks.filter(task => task.completed);
-                    const incompleteTasks = sectionTasks.filter(task => !task.completed);
-                    const isCollapsed = collapsedSections.has(section.id);
+                {/* Render Sections with separate SortableContext for section reordering */}
+                <SortableContext items={todoListSections.map(section => `section-${section.id}`)} strategy={verticalListSortingStrategy}>
+                  {todoListSections
+                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+                    .map((section) => {
+                      const sectionTasks = todoListTasks
+                        .filter(task => task.sectionId === section.id)
+                        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                      
+                      const completedTasks = sectionTasks.filter(task => task.completed);
+                      const incompleteTasks = sectionTasks.filter(task => !task.completed);
+                      const isCollapsed = collapsedSections.has(section.id);
 
-                    return (
-                      <DroppableSection key={section.id} sectionId={section.id}>
-                        <div className="border rounded-lg p-4 bg-white">
-                        {/* Section Header */}
-                        <div className="flex items-center justify-between mb-3">
-                          {editingSectionId === section.id ? (
-                            <div className="flex items-center space-x-2 flex-1">
-                              <Input
-                                value={editingSectionTitle}
-                                onChange={(e) => setEditingSectionTitle(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') saveSectionEdit();
-                                  if (e.key === 'Escape') cancelSectionEdit();
-                                }}
-                                className="flex-1 h-8"
-                                autoFocus
-                                data-testid={`input-edit-section-${section.id}`}
-                              />
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={saveSectionEdit}
-                                data-testid={`button-save-section-${section.id}`}
-                              >
-                                <Check className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={cancelSectionEdit}
-                                data-testid={`button-cancel-section-${section.id}`}
-                              >
-                                <X className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                className="flex items-center space-x-2 text-left hover:text-gray-600"
-                                onClick={() => toggleSection(section.id)}
-                                data-testid={`button-toggle-section-${section.id}`}
-                              >
-                                {isCollapsed ? (
-                                  <ChevronRight className="w-4 h-4" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4" />
-                                )}
-                                <h3
-                                  className="font-medium cursor-pointer"
-                                  onClick={() => startEditingSection(section)}
-                                  data-testid={`text-section-${section.id}`}
-                                >
-                                  {section.name}
-                                </h3>
-                                <span className="text-sm text-gray-500">
-                                  ({sectionTasks.length} tasks)
-                                </span>
-                              </button>
-                              
-                              <div className="flex items-center space-x-2">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => deleteSectionMutation.mutate(section.id)}
-                                  className="h-6 w-6 p-0 text-red-600 hover:text-red-700"
-                                  data-testid={`button-delete-section-${section.id}`}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                      return (
+                        <SortableSectionItem key={section.id} section={section} sectionTasks={sectionTasks}>
 
                         {/* Section Tasks */}
                         {!isCollapsed && (
@@ -2874,10 +2945,10 @@ export default function Canvas() {
                             )}
                           </div>
                         )}
-                        </div>
-                      </DroppableSection>
-                    );
+                        </SortableSectionItem>
+                      );
                   })}
+                </SortableContext>
 
                 {/* Unsectioned Tasks */}
                 {(() => {
