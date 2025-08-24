@@ -29,7 +29,7 @@ import {
   Target, 
   CheckCircle, 
   Lightbulb, 
-  Projector as Project,
+  FolderOpen,
   ArrowLeft,
   MoreVertical,
   Edit2,
@@ -381,21 +381,7 @@ export default function Dashboard() {
                     {stats.activeProjects}
                   </p>
                 </div>
-                <Project className="text-primary w-8 h-8" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-white shadow-sm border border-gray-100">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm">Tasks Created</p>
-                  <p className="text-2xl font-bold text-gray-900" data-testid="text-tasks-created">
-                    {stats.tasksCreated}
-                  </p>
-                </div>
-                <CheckCircle className="text-accent w-8 h-8" />
+                <FolderOpen className="text-primary w-8 h-8" />
               </div>
             </CardContent>
           </Card>
@@ -410,6 +396,20 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <Lightbulb className="text-secondary w-8 h-8" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-sm border border-gray-100">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm">Tasks Created</p>
+                  <p className="text-2xl font-bold text-gray-900" data-testid="text-tasks-created">
+                    {stats.tasksCreated}
+                  </p>
+                </div>
+                <CheckCircle className="text-accent w-8 h-8" />
               </div>
             </CardContent>
           </Card>
