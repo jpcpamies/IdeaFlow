@@ -1359,7 +1359,7 @@ export default function Canvas() {
                         <ChevronDown className="w-4 h-4" />
                       )}
                       <h3 className="font-medium text-gray-800">
-                        {section.name} ({sectionTasks.length})
+                        {section.name}
                       </h3>
                     </button>
                   </div>
