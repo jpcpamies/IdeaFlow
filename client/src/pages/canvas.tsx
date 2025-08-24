@@ -134,32 +134,55 @@ export default function Canvas() {
   const calculateBoundingBox = (cardIdeas: Idea[]) => {
     if (cardIdeas.length === 0) return { minX: 0, minY: 0, maxX: 0, maxY: 0 };
     
-    const minX = Math.min(...cardIdeas.map(idea => idea.canvasX));
-    const minY = Math.min(...cardIdeas.map(idea => idea.canvasY));
-    const maxX = Math.max(...cardIdeas.map(idea => idea.canvasX + 240)); // Card width
-    const maxY = Math.max(...cardIdeas.map(idea => idea.canvasY + 120)); // Card height
+    const positions = cardIdeas.map(idea => ({
+      x: idea.canvasX,
+      y: idea.canvasY,
+      right: idea.canvasX + 240, // Card width
+      bottom: idea.canvasY + 120  // Card height
+    }));
     
+    const minX = Math.min(...positions.map(p => p.x));
+    const minY = Math.min(...positions.map(p => p.y));
+    const maxX = Math.max(...positions.map(p => p.right));
+    const maxY = Math.max(...positions.map(p => p.bottom));
+    
+    console.log('Bounding box calculation:', { minX, minY, maxX, maxY });
     return { minX, minY, maxX, maxY };
   };
 
   const fitToView = () => {
-    if (filteredIdeas.length === 0) return;
+    console.log('Fit to view triggered with', filteredIdeas.length, 'ideas');
+    if (filteredIdeas.length === 0) {
+      console.log('No ideas to fit');
+      return;
+    }
     
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.log('No canvas ref available');
+      return;
+    }
     
     const bounds = calculateBoundingBox(filteredIdeas);
+    console.log('Content bounds:', bounds);
+    
     const canvasWidth = canvas.clientWidth;
     const canvasHeight = canvas.clientHeight;
+    console.log('Canvas dimensions:', canvasWidth, 'x', canvasHeight);
     
-    const contentWidth = bounds.maxX - bounds.minX + 100; // Extra padding
-    const contentHeight = bounds.maxY - bounds.minY + 100;
+    // Add generous padding (100px on all sides)
+    const contentWidth = bounds.maxX - bounds.minX + 200; 
+    const contentHeight = bounds.maxY - bounds.minY + 200;
+    console.log('Content with padding:', contentWidth, 'x', contentHeight);
     
     const scaleX = canvasWidth / contentWidth;
     const scaleY = canvasHeight / contentHeight;
     const optimalZoom = Math.min(scaleX, scaleY, 1) * 100; // Cap at 100%
     
-    setZoomLevel(Math.max(20, Math.min(200, optimalZoom))); // Keep within bounds
+    const finalZoom = Math.max(20, Math.min(200, optimalZoom)); // Keep within bounds
+    console.log('Calculated zoom:', optimalZoom, '-> Final zoom:', finalZoom);
+    
+    setZoomLevel(finalZoom);
   };
 
   // Debug logging (remove in production)
@@ -368,7 +391,11 @@ export default function Canvas() {
 
   // Canvas organization functions
   const handleGroupIdeas = async () => {
-    if (filteredIdeas.length === 0) return;
+    console.log('Group Ideas clicked! Ideas count:', filteredIdeas.length);
+    if (filteredIdeas.length === 0) {
+      console.log('No ideas to group');
+      return;
+    }
     
     // Group ideas by their group or create ungrouped cluster
     const groupedIdeas = filteredIdeas.reduce((acc, idea) => {
@@ -378,25 +405,31 @@ export default function Canvas() {
       return acc;
     }, {} as Record<string, Idea[]>);
     
-    // Calculate cluster positions
+    console.log('Grouped ideas:', groupedIdeas);
+    
+    // Calculate cluster positions - more spaced out
     const groupKeys = Object.keys(groupedIdeas);
     const clustersPerRow = Math.ceil(Math.sqrt(groupKeys.length));
-    const clusterSpacing = 300;
+    const clusterSpacing = 400; // More spacing between groups
     
     const updatePromises: Promise<any>[] = [];
     
     groupKeys.forEach((groupKey, index) => {
-      const clusterX = (index % clustersPerRow) * clusterSpacing + 100;
-      const clusterY = Math.floor(index / clustersPerRow) * clusterSpacing + 100;
+      const clusterX = (index % clustersPerRow) * clusterSpacing + 150;
+      const clusterY = Math.floor(index / clustersPerRow) * clusterSpacing + 150;
+      
+      console.log(`Cluster ${groupKey} at position:`, clusterX, clusterY);
       
       groupedIdeas[groupKey].forEach((idea, cardIndex) => {
-        // Create pile effect with small offsets
-        const offsetX = (cardIndex % 3) * 5;
-        const offsetY = (cardIndex % 3) * 5;
-        const rowOffset = Math.floor(cardIndex / 3) * 15;
+        // Create pile effect with small offsets (3-5px as requested)
+        const offsetX = (cardIndex % 3) * 4;
+        const offsetY = (cardIndex % 3) * 4;
+        const rowOffset = Math.floor(cardIndex / 3) * 20;
         
         const newX = clusterX + offsetX;
         const newY = clusterY + offsetY + rowOffset;
+        
+        console.log(`Moving card ${idea.id} to:`, newX, newY);
         
         updatePromises.push(
           updateIdeaMutation.mutateAsync({
@@ -408,15 +441,21 @@ export default function Canvas() {
     });
     
     try {
+      console.log('Updating', updatePromises.length, 'card positions...');
       await Promise.all(updatePromises);
-      setTimeout(() => fitToView(), 100); // Delay for DOM updates
+      console.log('Group positioning complete, triggering fit-to-view');
+      setTimeout(() => fitToView(), 200); // Longer delay for DOM updates
     } catch (error) {
       console.error('Failed to group ideas:', error);
     }
   };
 
   const handleDisperseIdeas = async () => {
-    if (filteredIdeas.length === 0) return;
+    console.log('Disperse Ideas clicked! Ideas count:', filteredIdeas.length);
+    if (filteredIdeas.length === 0) {
+      console.log('No ideas to disperse');
+      return;
+    }
     
     // Group ideas by their group for zone placement
     const groupedIdeas = filteredIdeas.reduce((acc, idea) => {
@@ -426,10 +465,12 @@ export default function Canvas() {
       return acc;
     }, {} as Record<string, Idea[]>);
     
+    console.log('Dispersing grouped ideas:', groupedIdeas);
+    
     const cardWidth = 240;
     const cardHeight = 120;
-    const padding = 20;
-    const zoneSpacing = 100;
+    const padding = 30; // More padding to prevent overlaps
+    const zoneSpacing = 150; // More spacing between group zones
     
     const groupKeys = Object.keys(groupedIdeas);
     const zonesPerRow = Math.ceil(Math.sqrt(groupKeys.length));
@@ -437,8 +478,10 @@ export default function Canvas() {
     const updatePromises: Promise<any>[] = [];
     
     groupKeys.forEach((groupKey, groupIndex) => {
-      const zoneX = (groupIndex % zonesPerRow) * (cardWidth * 3 + zoneSpacing);
-      const zoneY = Math.floor(groupIndex / zonesPerRow) * (cardHeight * 3 + zoneSpacing);
+      const zoneX = (groupIndex % zonesPerRow) * (cardWidth * 4 + zoneSpacing);
+      const zoneY = Math.floor(groupIndex / zonesPerRow) * (cardHeight * 4 + zoneSpacing);
+      
+      console.log(`Group ${groupKey} zone at:`, zoneX, zoneY);
       
       const cardsInGroup = groupedIdeas[groupKey];
       const cardsPerRow = Math.ceil(Math.sqrt(cardsInGroup.length));
@@ -447,8 +490,10 @@ export default function Canvas() {
         const row = Math.floor(cardIndex / cardsPerRow);
         const col = cardIndex % cardsPerRow;
         
-        const newX = zoneX + col * (cardWidth + padding) + 50;
-        const newY = zoneY + row * (cardHeight + padding) + 50;
+        const newX = zoneX + col * (cardWidth + padding) + 100;
+        const newY = zoneY + row * (cardHeight + padding) + 100;
+        
+        console.log(`Dispersing card ${idea.id} to:`, newX, newY);
         
         updatePromises.push(
           updateIdeaMutation.mutateAsync({
@@ -460,8 +505,10 @@ export default function Canvas() {
     });
     
     try {
+      console.log('Updating', updatePromises.length, 'card positions for dispersion...');
       await Promise.all(updatePromises);
-      setTimeout(() => fitToView(), 100); // Delay for DOM updates
+      console.log('Dispersion complete, triggering fit-to-view');
+      setTimeout(() => fitToView(), 200); // Longer delay for DOM updates
     } catch (error) {
       console.error('Failed to disperse ideas:', error);
     }
@@ -1032,22 +1079,32 @@ export default function Canvas() {
                 <Button 
                   variant="outline" 
                   className="w-full justify-start text-sm"
-                  onClick={handleGroupIdeas}
-                  disabled={filteredIdeas.length === 0}
+                  onClick={(e) => {
+                    console.log('Group Ideas button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleGroupIdeas();
+                  }}
+                  disabled={filteredIdeas.length === 0 || updateIdeaMutation.isPending}
                   data-testid="button-group-ideas"
                 >
                   <Grid3x3 className="mr-2 w-4 h-4" />
-                  Group Ideas
+                  {updateIdeaMutation.isPending ? 'Grouping...' : 'Group Ideas'}
                 </Button>
                 <Button 
                   variant="outline" 
                   className="w-full justify-start text-sm"
-                  onClick={handleDisperseIdeas}
-                  disabled={filteredIdeas.length === 0}
+                  onClick={(e) => {
+                    console.log('Disperse Ideas button clicked');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleDisperseIdeas();
+                  }}
+                  disabled={filteredIdeas.length === 0 || updateIdeaMutation.isPending}
                   data-testid="button-disperse-ideas"
                 >
                   <Shuffle className="mr-2 w-4 h-4" />
-                  Disperse Ideas
+                  {updateIdeaMutation.isPending ? 'Dispersing...' : 'Disperse Ideas'}
                 </Button>
               </div>
             </div>
@@ -1100,7 +1157,12 @@ export default function Canvas() {
             <Button 
               variant="ghost" 
               size="sm" 
-              onClick={fitToView}
+              onClick={(e) => {
+                console.log('Fit to view button clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                fitToView();
+              }}
               disabled={filteredIdeas.length === 0}
               title="Fit to view"
               data-testid="button-fit-to-view"

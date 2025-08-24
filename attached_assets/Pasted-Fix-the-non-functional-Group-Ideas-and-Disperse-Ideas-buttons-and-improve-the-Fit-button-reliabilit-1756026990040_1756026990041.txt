@@ -1,0 +1,42 @@
+Fix the non-functional Group Ideas and Disperse Ideas buttons, and improve the Fit button reliability.
+
+CANVAS ORGANIZATION FIXES:
+
+1. Group Ideas Button Functionality:
+   - When clicked, automatically cluster cards by group color
+   - Stack cards of same group with slight offsets (3-5px) like in the reference image
+   - Blue "Product Ideas" cards should cluster together as shown
+   - Green "Marketing" cards cluster separately 
+   - Maintain visual "pile" effect with overlapping but visible cards
+   - Save new positions to database after grouping
+
+2. Disperse Ideas Button Functionality:
+   - Spread out ALL overlapping cards so none overlap
+   - Keep cards of same color/group in nearby zones (loose clustering)
+   - Ensure every card is fully readable and accessible
+   - Use intelligent spacing algorithm to prevent collisions
+   - Automatically trigger fit-to-view after dispersing
+   - Save new positions to database after dispersing
+
+3. Fit-to-View Button Reliability:
+   - Calculate bounding box of ALL visible cards accurately
+   - Add padding margin around card boundaries (50-100px)
+   - Dynamically adjust zoom percentage to fit all content
+   - Work consistently whether cards are grouped or dispersed
+   - Update zoom percentage display in real-time
+   - Handle edge cases (very few cards, very many cards)
+
+4. Integrated Smooth Workflow:
+   - Group Ideas → Auto fit-to-view
+   - Disperse Ideas → Auto fit-to-view  
+   - All operations should feel smooth and connected
+   - Show loading state during position calculations if needed
+   - Ensure database position updates don't cause visual glitches
+
+5. Event Handler Debugging:
+   - Verify button click events are properly attached
+   - Add console logging to debug which functions are being called
+   - Ensure functions aren't being blocked by other event handlers
+   - Test that positioning algorithms actually execute
+
+CRITICAL: The buttons must actually trigger their respective functions and produce the visual organization shown in the reference images.
