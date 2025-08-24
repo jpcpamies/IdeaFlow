@@ -48,7 +48,9 @@ import {
   Trash2,
   ArrowLeft,
   MoreHorizontal,
-  Maximize2
+  Maximize2,
+  Tag,
+  ClipboardList
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea, TodoList, Task } from "@shared/schema";
