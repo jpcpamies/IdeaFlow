@@ -70,6 +70,7 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   DndContext,
   closestCenter,
+  closestCorners,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -1159,7 +1160,34 @@ export default function Canvas() {
       }
       return response.json();
     },
-    onSuccess: () => {
+    onMutate: async ({ id, orderIndex, sectionId }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      
+      // Snapshot the previous value
+      const previousTasks = queryClient.getQueryData(['/api/todolists', selectedTodoList?.id, 'tasks']);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['/api/todolists', selectedTodoList?.id, 'tasks'], (old: Task[] | undefined) => {
+        if (!old) return old;
+        
+        return old.map(task => 
+          task.id === id 
+            ? { ...task, orderIndex, sectionId: sectionId !== undefined ? sectionId : task.sectionId }
+            : task
+        );
+      });
+      
+      // Return a context object with the snapshotted value
+      return { previousTasks };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      queryClient.setQueryData(['/api/todolists', selectedTodoList?.id, 'tasks'], context?.previousTasks);
+      console.error('Failed to reorder task:', err);
+      // Show user-friendly error (you could add toast notification here)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
     }
   });
@@ -1228,7 +1256,7 @@ export default function Canvas() {
 
 
 
-  // Section reordering mutation
+  // Section reordering mutation with optimistic updates
   const reorderSectionMutation = useMutation({
     mutationFn: async ({ id, orderIndex }: { id: string; orderIndex: number }) => {
       const response = await apiRequest('PATCH', `/api/sections/${id}`, { orderIndex });
@@ -1238,13 +1266,36 @@ export default function Canvas() {
       }
       return response.json();
     },
-    onSuccess: () => {
-      // More comprehensive invalidation to ensure UI updates
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+    onMutate: async ({ id, orderIndex }) => {
+      // Cancel any outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
       
-      // Force refetch to ensure order changes are visible immediately
-      queryClient.refetchQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
+      // Snapshot the previous value
+      const previousSections = queryClient.getQueryData(['/api/todolists', selectedTodoList?.id, 'sections']);
+      
+      // Optimistically update to the new value
+      queryClient.setQueryData(['/api/todolists', selectedTodoList?.id, 'sections'], (old: Section[] | undefined) => {
+        if (!old) return old;
+        
+        return old.map(section => 
+          section.id === id 
+            ? { ...section, orderIndex }
+            : section
+        );
+      });
+      
+      // Return a context object with the snapshotted value
+      return { previousSections };
+    },
+    onError: (err, variables, context) => {
+      // If the mutation fails, use the context returned from onMutate to roll back
+      queryClient.setQueryData(['/api/todolists', selectedTodoList?.id, 'sections'], context?.previousSections);
+      console.error('Failed to reorder section:', err);
+      // Show user-friendly error (you could add toast notification here)
+    },
+    onSettled: () => {
+      // Always refetch after error or success
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
     }
   });
 
@@ -1390,75 +1441,28 @@ export default function Canvas() {
 
     if (activeId === overId) return;
 
-    // Only handle task dragging
-    if (!activeId.startsWith('task-')) return;
+    // console.log('Drag ended:', { activeId, overId });
 
-    const activeTask = todoListTasks.find(task => `task-${task.id}` === activeId);
-    if (!activeTask) return;
+    // Handle task dragging
+    if (activeId.startsWith('task-')) {
+      const activeTask = todoListTasks.find(task => `task-${task.id}` === activeId);
+      if (!activeTask) return;
 
-    // Handle task-to-task (reordering within or across sections)
-    if (overId.startsWith('task-')) {
-      const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
-      if (!overTask) return;
+      // Task-to-task (reordering within or across sections)
+      if (overId.startsWith('task-')) {
+        const overTask = todoListTasks.find(task => `task-${task.id}` === overId);
+        if (!overTask) return;
 
-      // Calculate new order index based on position relative to the over task
-      const tasksInTargetSection = todoListTasks
-        .filter(task => task.sectionId === (overTask.sectionId || null))
-        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-      
-      const overTaskIndex = tasksInTargetSection.findIndex(task => task.id === overTask.id);
-      const activeTaskIndex = tasksInTargetSection.findIndex(task => task.id === activeTask.id);
-      
-      // Don't move if it's the exact same position
-      if (activeTaskIndex === overTaskIndex) return;
-      
-      // Calculate new order index
-      let newOrderIndex: number;
-      if (overTaskIndex === 0) {
-        // Moving to first position
-        newOrderIndex = Math.max(0, (overTask.orderIndex || 0) - 1);
-      } else if (activeTaskIndex < overTaskIndex) {
-        // Moving down in the list
-        newOrderIndex = (overTask.orderIndex || 0);
-      } else {
-        // Moving up in the list
-        const prevTask = tasksInTargetSection[overTaskIndex - 1];
-        newOrderIndex = prevTask ? ((prevTask.orderIndex || 0) + (overTask.orderIndex || 0)) / 2 : (overTask.orderIndex || 0) - 1;
+        handleTaskToTaskDrag(activeTask, overTask);
       }
-
-      reorderTaskMutation.mutate({
-        id: activeTask.id,
-        orderIndex: newOrderIndex,
-        sectionId: overTask.sectionId || null
-      });
-    }
-    // Handle task-to-section (move task to section header/area)
-    else if (overId.startsWith('section-')) {
-      const sectionId = overId.replace('section-', '');
-      const targetSection = todoListSections.find(section => section.id === sectionId);
-      
-      if (targetSection && activeTask.sectionId !== sectionId) {
-        const tasksInTargetSection = todoListTasks.filter(task => task.sectionId === sectionId);
-        const maxOrderInSection = Math.max(...tasksInTargetSection.map(task => task.orderIndex || 0), 0);
-        
-        reorderTaskMutation.mutate({
-          id: activeTask.id,
-          orderIndex: maxOrderInSection + 1,
-          sectionId: sectionId
-        });
+      // Task-to-section (move task to section)
+      else if (overId.startsWith('section-')) {
+        const sectionId = overId.replace('section-', '');
+        handleTaskToSectionDrag(activeTask, sectionId);
       }
-    }
-    // Handle task-to-general (move task to general/unsectioned area)
-    else if (overId === 'general-tasks') {
-      if (activeTask.sectionId !== null) {
-        const unsectionedTasks = todoListTasks.filter(task => !task.sectionId);
-        const maxOrderInGeneral = Math.max(...unsectionedTasks.map(task => task.orderIndex || 0), 0);
-        
-        reorderTaskMutation.mutate({
-          id: activeTask.id,
-          orderIndex: maxOrderInGeneral + 1,
-          sectionId: null
-        });
+      // Task-to-general (move task to unsectioned area)
+      else if (overId === 'general-tasks') {
+        handleTaskToGeneralDrag(activeTask);
       }
     }
     // Handle section-to-section (reordering sections)
@@ -1488,12 +1492,153 @@ export default function Canvas() {
         
 
 
-        reorderSectionMutation.mutate({
-          id: activeSectionId,
-          orderIndex: newOrderIndex
-        });
+        handleSectionToSectionDrag(activeSectionId, overSectionId);
       }
     }
+  };
+
+  // Gap-based constants for smooth ordering
+  const SECTION_ORDER_GAP = 1000;
+  const TASK_ORDER_GAP = 100;
+
+  const handleTaskToTaskDrag = (activeTask: Task, overTask: Task) => {
+    const targetSectionId = overTask.sectionId || null;
+    
+    // Get all tasks in the target section, sorted by order
+    const tasksInTargetSection = todoListTasks
+      .filter(task => task.sectionId === targetSectionId)
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+    const overTaskIndex = tasksInTargetSection.findIndex(task => task.id === overTask.id);
+    const activeTaskIndex = tasksInTargetSection.findIndex(task => task.id === activeTask.id);
+    
+    // Skip if moving to same position within same section
+    if (activeTask.sectionId === targetSectionId && activeTaskIndex === overTaskIndex) return;
+    
+    let newOrderIndex: number;
+    
+    if (overTaskIndex === 0) {
+      // Moving to first position
+      newOrderIndex = Math.max(0, (overTask.orderIndex || 0) - TASK_ORDER_GAP);
+    } else if (activeTaskIndex !== -1 && activeTaskIndex < overTaskIndex) {
+      // Moving down: place after the over task
+      const nextTask = tasksInTargetSection[overTaskIndex + 1];
+      if (nextTask) {
+        newOrderIndex = ((overTask.orderIndex || 0) + (nextTask.orderIndex || 0)) / 2;
+      } else {
+        newOrderIndex = (overTask.orderIndex || 0) + TASK_ORDER_GAP;
+      }
+    } else {
+      // Moving up: place before the over task
+      const prevTask = tasksInTargetSection[overTaskIndex - 1];
+      if (prevTask) {
+        newOrderIndex = ((prevTask.orderIndex || 0) + (overTask.orderIndex || 0)) / 2;
+      } else {
+        newOrderIndex = (overTask.orderIndex || 0) - TASK_ORDER_GAP;
+      }
+    }
+
+    // console.log('Task reorder:', { 
+    //   activeTask: activeTask.title, 
+    //   overTask: overTask.title, 
+    //   newOrderIndex, 
+    //   targetSectionId 
+    // });
+
+    reorderTaskMutation.mutate({
+      id: activeTask.id,
+      orderIndex: newOrderIndex,
+      sectionId: targetSectionId
+    });
+  };
+
+  const handleTaskToSectionDrag = (activeTask: Task, targetSectionId: string) => {
+    if (activeTask.sectionId === targetSectionId) return;
+
+    const tasksInTargetSection = todoListTasks.filter(task => task.sectionId === targetSectionId);
+    const maxOrderInSection = tasksInTargetSection.length > 0 
+      ? Math.max(...tasksInTargetSection.map(task => task.orderIndex || 0)) 
+      : 0;
+    
+    // console.log('Task to section:', { 
+    //   activeTask: activeTask.title, 
+    //   targetSectionId, 
+    //   newOrderIndex: maxOrderInSection + TASK_ORDER_GAP 
+    // });
+
+    reorderTaskMutation.mutate({
+      id: activeTask.id,
+      orderIndex: maxOrderInSection + TASK_ORDER_GAP,
+      sectionId: targetSectionId
+    });
+  };
+
+  const handleTaskToGeneralDrag = (activeTask: Task) => {
+    if (activeTask.sectionId === null) return;
+
+    const unsectionedTasks = todoListTasks.filter(task => !task.sectionId);
+    const maxOrderInGeneral = unsectionedTasks.length > 0
+      ? Math.max(...unsectionedTasks.map(task => task.orderIndex || 0))
+      : 0;
+    
+    // console.log('Task to general:', { 
+    //   activeTask: activeTask.title, 
+    //   newOrderIndex: maxOrderInGeneral + TASK_ORDER_GAP 
+    // });
+
+    reorderTaskMutation.mutate({
+      id: activeTask.id,
+      orderIndex: maxOrderInGeneral + TASK_ORDER_GAP,
+      sectionId: null
+    });
+  };
+
+  const handleSectionToSectionDrag = (activeSectionId: string, overSectionId: string) => {
+    const activeSection = todoListSections.find(section => section.id === activeSectionId);
+    const overSection = todoListSections.find(section => section.id === overSectionId);
+    
+    if (!activeSection || !overSection) return;
+
+    // Sort sections by current order
+    const sortedSections = [...todoListSections].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+    const activeIndex = sortedSections.findIndex(section => section.id === activeSectionId);
+    const overIndex = sortedSections.findIndex(section => section.id === overSectionId);
+    
+    if (activeIndex === overIndex) return;
+
+    let newOrderIndex: number;
+    
+    if (overIndex === 0) {
+      // Moving to first position
+      newOrderIndex = Math.max(0, (overSection.orderIndex || 0) - SECTION_ORDER_GAP);
+    } else if (activeIndex < overIndex) {
+      // Moving down: place after the over section
+      const nextSection = sortedSections[overIndex + 1];
+      if (nextSection) {
+        newOrderIndex = ((overSection.orderIndex || 0) + (nextSection.orderIndex || 0)) / 2;
+      } else {
+        newOrderIndex = (overSection.orderIndex || 0) + SECTION_ORDER_GAP;
+      }
+    } else {
+      // Moving up: place before the over section
+      const prevSection = sortedSections[overIndex - 1];
+      if (prevSection) {
+        newOrderIndex = ((prevSection.orderIndex || 0) + (overSection.orderIndex || 0)) / 2;
+      } else {
+        newOrderIndex = (overSection.orderIndex || 0) - SECTION_ORDER_GAP;
+      }
+    }
+
+    // console.log('Section reorder:', { 
+    //   activeSection: activeSection.name, 
+    //   overSection: overSection.name, 
+    //   newOrderIndex 
+    // });
+
+    reorderSectionMutation.mutate({
+      id: activeSectionId,
+      orderIndex: newOrderIndex
+    });
   };
 
   const toggleSection = (sectionId: string) => {
@@ -1788,7 +1933,7 @@ export default function Canvas() {
     });
   };
 
-  // DroppableSection Component - subtle drop zone feedback
+  // DroppableSection Component - enhanced drop zone feedback
   const DroppableSection = ({ sectionId, children }: { sectionId: string; children: React.ReactNode }) => {
     const { isOver, setNodeRef } = useDroppable({
       id: `section-${sectionId}`,
@@ -1797,19 +1942,31 @@ export default function Canvas() {
     return (
       <div
         ref={setNodeRef}
-        className={`transition-all duration-150 ${
+        className={`transition-all duration-200 ease-in-out rounded-lg ${
           isOver 
-            ? 'bg-blue-50/50 ring-1 ring-blue-300' 
+            ? 'bg-blue-50/80 ring-2 ring-blue-400 ring-opacity-50 shadow-lg transform scale-[1.02]' 
             : ''
         }`}
-        style={{ minHeight: '50px' }}
+        style={{ 
+          minHeight: '60px',
+          ...(isOver && {
+            background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.1) 100%)'
+          })
+        }}
       >
+        {isOver && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
+              Drop task here
+            </div>
+          </div>
+        )}
         {children}
       </div>
     );
   };
 
-  // DroppableGeneralTasks Component - subtle drop zone feedback
+  // DroppableGeneralTasks Component - enhanced drop zone feedback
   const DroppableGeneralTasks = ({ children }: { children: React.ReactNode }) => {
     const { isOver, setNodeRef } = useDroppable({
       id: 'general-tasks',
@@ -1818,14 +1975,31 @@ export default function Canvas() {
     return (
       <div
         ref={setNodeRef}
-        className={`transition-all duration-150 ${
+        className={`relative transition-all duration-200 ease-in-out rounded-lg border-2 border-dashed ${
           isOver 
-            ? 'bg-gray-100/50 ring-1 ring-gray-300' 
-            : ''
+            ? 'bg-gray-50/80 border-gray-400 shadow-lg transform scale-[1.01]' 
+            : 'border-gray-200 border-opacity-50'
         }`}
-        style={{ minHeight: '40px' }}
+        style={{ 
+          minHeight: '60px',
+          ...(isOver && {
+            background: 'linear-gradient(135deg, rgba(156, 163, 175, 0.1) 0%, rgba(209, 213, 219, 0.1) 100%)'
+          })
+        }}
       >
+        {isOver && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="bg-gray-600 text-white px-3 py-1 rounded-full text-sm font-medium shadow-lg">
+              Drop to general tasks
+            </div>
+          </div>
+        )}
         {children}
+        {!isOver && React.Children.count(children) === 0 && (
+          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
+            General tasks area
+          </div>
+        )}
       </div>
     );
   };
@@ -1842,16 +2016,21 @@ export default function Canvas() {
     } = useSortable({ id: `section-${section.id}` });
 
     const style = {
-      transform: transform ? `translateY(${transform.y}px)` : undefined, // Constrain to Y-axis only
-      transition,
-      opacity: isDragging ? 0.8 : 1,
+      transform: transform ? `translateY(${transform.y}px)` : undefined,
+      transition: isDragging ? 'none' : transition,
+      opacity: isDragging ? 0.95 : 1,
+      zIndex: isDragging ? 1000 : 'auto',
     };
 
     return (
       <div
         ref={setNodeRef}
         style={style}
-        className={`${isDragging ? 'z-50 shadow-2xl' : ''}`}
+        className={`transition-all duration-200 ${
+          isDragging 
+            ? 'shadow-2xl transform scale-105 ring-2 ring-purple-300 ring-opacity-50' 
+            : ''
+        }`}
       >
         <DroppableSection sectionId={section.id}>
           <div className="group border rounded-lg p-4 bg-white hover:bg-gray-50 transition-colors">
@@ -1943,10 +2122,8 @@ export default function Canvas() {
                 </>
               )}
             </div>
-            {/* Wrap section tasks in their own SortableContext */}
-            <SortableContext items={sectionTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
-              {children}
-            </SortableContext>
+            {/* Tasks are now managed by the parent unified SortableContext */}
+            {children}
           </div>
         </DroppableSection>
       </div>
@@ -1966,8 +2143,9 @@ export default function Canvas() {
 
     const style = {
       transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.5 : 1,
+      transition: isDragging ? 'none' : transition,
+      opacity: isDragging ? 0.9 : 1,
+      zIndex: isDragging ? 999 : 'auto',
     };
 
     const isEditing = editingTaskId === task.id;
@@ -1976,8 +2154,10 @@ export default function Canvas() {
       <div
         ref={setNodeRef}
         style={style}
-        className={`group flex items-center space-x-3 p-2 rounded-lg ${
-          isDragging ? 'shadow-lg bg-white' : 'hover:bg-gray-50'
+        className={`group flex items-center space-x-3 p-3 rounded-lg border transition-all duration-200 ${
+          isDragging 
+            ? 'shadow-2xl bg-white border-blue-300 ring-2 ring-blue-200 ring-opacity-50 transform rotate-1 scale-105' 
+            : 'hover:bg-gray-50 border-transparent hover:border-gray-200 hover:shadow-sm'
         }`}
         data-testid={`sortable-task-${task.id}`}
       >
@@ -4223,7 +4403,7 @@ export default function Canvas() {
           <div className="flex-1 overflow-hidden flex flex-col space-y-4">
             <DndContext
               sensors={sensors}
-              collisionDetection={closestCenter}
+              collisionDetection={closestCorners}
               onDragEnd={handleDragEnd}
             >
               {/* Add New Section - Outside any SortableContext */}
@@ -4248,8 +4428,15 @@ export default function Canvas() {
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-6">
-                {/* Render Sections with separate SortableContext for section reordering */}
-                <SortableContext items={todoListSections.map(section => `section-${section.id}`)} strategy={verticalListSortingStrategy}>
+                {/* Unified SortableContext for all draggable items */}
+                <SortableContext 
+                  items={[
+                    ...todoListSections.map(section => `section-${section.id}`),
+                    ...todoListTasks.map(task => `task-${task.id}`)
+                  ]} 
+                  strategy={verticalListSortingStrategy}
+                >
+                  {/* Render Sections */}
                   {todoListSections
                     .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
                     .map((section) => {
@@ -4263,79 +4450,76 @@ export default function Canvas() {
 
                       return (
                         <SortableSectionItem key={section.id} section={section} sectionTasks={sectionTasks}>
-
-                        {/* Section Tasks */}
-                        {!isCollapsed && (
-                          <div className="space-y-3">
-                            {/* Incomplete Tasks */}
-                            <div className="space-y-2">
-                              {incompleteTasks.map(task => (
-                                <SortableTaskItem key={task.id} task={task} />
-                              ))}
-                            </div>
-
-
-                            {/* Completed Tasks */}
-                            {completedTasks.length > 0 && (
-                              <div className="pt-3 border-t border-gray-200">
-                                <h4 className="text-sm font-medium text-gray-500 mb-2">
-                                  Completed ({completedTasks.length})
-                                </h4>
-                                <div className="space-y-2">
-                                  {completedTasks.map(task => (
-                                    <SortableTaskItem key={task.id} task={task} />
-                                  ))}
-                                </div>
+                          {/* Section Tasks */}
+                          {!isCollapsed && (
+                            <div className="space-y-3">
+                              {/* Incomplete Tasks */}
+                              <div className="space-y-2">
+                                {incompleteTasks.map(task => (
+                                  <SortableTaskItem key={task.id} task={task} />
+                                ))}
                               </div>
-                            )}
-                          </div>
-                        )}
+
+                              {/* Completed Tasks */}
+                              {completedTasks.length > 0 && (
+                                <div className="pt-3 border-t border-gray-200">
+                                  <h4 className="text-sm font-medium text-gray-500 mb-2">
+                                    Completed ({completedTasks.length})
+                                  </h4>
+                                  <div className="space-y-2">
+                                    {completedTasks.map(task => (
+                                      <SortableTaskItem key={task.id} task={task} />
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </SortableSectionItem>
                       );
-                  })}
-                </SortableContext>
+                    })}
 
-                {/* Unsectioned Tasks with their own SortableContext */}
-                {(() => {
-                  const unsectionedTasks = todoListTasks
-                    .filter(task => !task.sectionId)
-                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-                  
-                  const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
-                  const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
+                  {/* Unsectioned Tasks */}
+                  {(() => {
+                    const unsectionedTasks = todoListTasks
+                      .filter(task => !task.sectionId)
+                      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                    
+                    const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
+                    const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
 
-                  return (
-                    <SortableContext items={unsectionedTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
-                    <DroppableGeneralTasks>
-                      <div className="space-y-3">
-                        {/* Incomplete Unsectioned Tasks */}
-                        {incompleteUnsectioned.length > 0 && (
-                          <div className="space-y-2">
-                            {incompleteUnsectioned.map(task => (
-                              <SortableTaskItem key={task.id} task={task} />
-                            ))}
-                          </div>
-                        )}
+                    if (unsectionedTasks.length === 0) return null;
 
-
-                        {/* Completed Tasks */}
-                        {completedUnsectioned.length > 0 && (
-                          <div className="space-y-2">
-                            <h4 className="text-sm font-medium text-gray-500">
-                              Completed ({completedUnsectioned.length})
-                            </h4>
+                    return (
+                      <DroppableGeneralTasks>
+                        <div className="space-y-3">
+                          {/* Incomplete Unsectioned Tasks */}
+                          {incompleteUnsectioned.length > 0 && (
                             <div className="space-y-2">
-                              {completedUnsectioned.map(task => (
+                              {incompleteUnsectioned.map(task => (
                                 <SortableTaskItem key={task.id} task={task} />
                               ))}
                             </div>
-                          </div>
-                        )}
-                      </div>
-                    </DroppableGeneralTasks>
-                    </SortableContext>
-                  );
-                })()}
+                          )}
+
+                          {/* Completed Tasks */}
+                          {completedUnsectioned.length > 0 && (
+                            <div className="space-y-2">
+                              <h4 className="text-sm font-medium text-gray-500">
+                                Completed ({completedUnsectioned.length})
+                              </h4>
+                              <div className="space-y-2">
+                                {completedUnsectioned.map(task => (
+                                  <SortableTaskItem key={task.id} task={task} />
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </DroppableGeneralTasks>
+                    );
+                  })()}
+                </SortableContext>
               </div>
             </DndContext>
           </div>
