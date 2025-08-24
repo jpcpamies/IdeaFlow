@@ -1586,30 +1586,36 @@ export default function Canvas() {
                       </h3>
                     </button>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => startEditingSection(section)}
-                      className="h-6 w-6 p-0 hover:bg-gray-200"
-                      title="Edit section name"
-                      data-testid={`button-edit-section-${section.id}`}
-                    >
-                      <Settings className="w-3 h-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setSectionToDelete(section);
-                        setIsSectionDeleteConfirmOpen(true);
-                      }}
-                      className="h-6 w-6 p-0 hover:bg-red-200"
-                      title="Delete section"
-                      data-testid={`button-delete-section-${section.id}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </Button>
+                  <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 hover:bg-gray-200"
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`section-menu-${section.id}`}
+                        >
+                          <MoreHorizontal className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => startEditingSection(section)}>
+                          <Edit className="mr-2 w-3 h-3" />
+                          Edit Section
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={() => {
+                            setSectionToDelete(section);
+                            setIsSectionDeleteConfirmOpen(true);
+                          }}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 w-3 h-3" />
+                          Delete Section
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </>
               )}
