@@ -42,7 +42,6 @@ import {
   Target,
   Bookmark,
   Folder,
-  Settings,
   MoreVertical,
   Users,
   Edit,
@@ -2607,9 +2606,6 @@ export default function Canvas() {
             </div>
             <span className="text-sm text-gray-700">{user?.firstName || 'User'}</span>
           </div>
-          <Button variant="ghost" size="sm">
-            <Settings className="w-4 h-4" />
-          </Button>
         </div>
       </header>
 
