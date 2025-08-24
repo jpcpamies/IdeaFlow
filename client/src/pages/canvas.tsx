@@ -120,6 +120,9 @@ export default function Canvas() {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [isGroupActionsModalOpen, setIsGroupActionsModalOpen] = useState(false);
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
+  const [isCreateNewGroupModalOpen, setIsCreateNewGroupModalOpen] = useState(false);
+  const [newGroupFromSelectionName, setNewGroupFromSelectionName] = useState("");
+  const [newGroupFromSelectionColor, setNewGroupFromSelectionColor] = useState("#3B82F6");
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null); // null = "All Ideas"
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
@@ -2036,19 +2039,19 @@ export default function Canvas() {
     }
   };
 
-  const handleCreateNewGroup = async () => {
-    const groupName = window.prompt('Enter group name:');
-    if (!groupName?.trim()) return;
+  const handleCreateNewGroup = () => {
+    // Open the create new group modal instead of using prompt
+    setIsCreateNewGroupModalOpen(true);
+  };
+
+  const handleSubmitNewGroupFromSelection = async () => {
+    if (!newGroupFromSelectionName.trim()) return;
     
     try {
-      // Generate a random color for the new group
-      const colors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'];
-      const randomColor = colors[Math.floor(Math.random() * colors.length)];
-      
       // Create the new group
       const newGroup = await createGroupMutation.mutateAsync({
-        name: groupName,
-        color: randomColor
+        name: newGroupFromSelectionName.trim(),
+        color: newGroupFromSelectionColor
       });
       
       // Assign selected cards to the new group
@@ -2065,8 +2068,12 @@ export default function Canvas() {
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       
+      // Close modals and reset state
+      setIsCreateNewGroupModalOpen(false);
       setIsGroupActionsModalOpen(false);
       setSelectedCards([]);
+      setNewGroupFromSelectionName("");
+      setNewGroupFromSelectionColor("#3B82F6");
     } catch (error) {
       console.error('Failed to create group:', error);
       alert('Failed to create group. Please try again.');
