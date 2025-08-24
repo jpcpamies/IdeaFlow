@@ -6,6 +6,13 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { 
   Dialog,
   DialogContent,
@@ -98,6 +105,10 @@ export default function Canvas() {
   // Form State
   const [newIdeaTitle, setNewIdeaTitle] = useState("");
   const [newIdeaDescription, setNewIdeaDescription] = useState("");
+  const [newIdeaGroupId, setNewIdeaGroupId] = useState<string>("");
+  const [newIdeaColor, setNewIdeaColor] = useState("#3B82F6");
+  const [isCreatingNewGroup, setIsCreatingNewGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   
   // Drag State
   const [dragState, setDragState] = useState<DragState>({
@@ -226,8 +237,14 @@ export default function Canvas() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      // Clear all form fields
       setNewIdeaTitle("");
       setNewIdeaDescription("");
+      setNewIdeaGroupId("");
+      setNewIdeaColor("#3B82F6");
+      setIsCreatingNewGroup(false);
+      setNewGroupName("");
       setIsNewIdeaDialogOpen(false);
     },
   });
@@ -320,34 +337,71 @@ export default function Canvas() {
   };
 
   // Idea CRUD functions
-  const handleCreateIdea = () => {
+  const handleCreateIdea = async () => {
     if (!newIdeaTitle.trim()) return;
     
-    // Find a good position for the new card
-    const existingPositions = ideas.map((idea: Idea) => ({ x: idea.canvasX, y: idea.canvasY }));
-    let newX = 100;
-    let newY = 100;
+    let finalGroupId = newIdeaGroupId;
+    let finalColor = newIdeaColor;
     
-    // Simple positioning logic - place new cards in a grid
-    const gridSize = 300;
-    while (existingPositions.some(pos => 
-      Math.abs(pos.x - newX) < gridSize && Math.abs(pos.y - newY) < gridSize
-    )) {
-      newX += gridSize;
-      if (newX > 1000) {
-        newX = 100;
-        newY += 250;
+    // Handle creating new group if selected
+    if (isCreatingNewGroup && newGroupName.trim()) {
+      try {
+        const groupRes = await apiRequest('POST', '/api/groups', {
+          name: newGroupName.trim(),
+          color: newIdeaColor
+        });
+        const newGroup = await groupRes.json();
+        finalGroupId = newGroup.id;
+        finalColor = newGroup.color;
+      } catch (error) {
+        console.error('Failed to create new group:', error);
+        return;
+      }
+    } else if (finalGroupId) {
+      // Use existing group's color
+      const selectedGroup = groups.find(g => g.id === finalGroupId);
+      if (selectedGroup) {
+        finalColor = selectedGroup.color;
+      }
+    }
+    
+    // Find a good position for the new card - center of current viewport
+    const canvas = canvasRef.current?.parentElement;
+    let newX = 200;
+    let newY = 200;
+    
+    if (canvas) {
+      // Position in center of visible area
+      const centerX = (canvas.scrollLeft + canvas.clientWidth / 2) / (zoomLevel / 100);
+      const centerY = (canvas.scrollTop + canvas.clientHeight / 2) / (zoomLevel / 100);
+      
+      // Check for overlaps and adjust if needed
+      const existingPositions = ideas.map((idea: Idea) => ({ x: idea.canvasX, y: idea.canvasY }));
+      
+      for (let i = 0; i < 20; i++) {
+        const testX = centerX - 120 + (i % 5) * 60;
+        const testY = centerY - 60 + Math.floor(i / 5) * 60;
+        
+        const overlaps = existingPositions.some(pos => 
+          Math.abs(pos.x - testX) < 200 && Math.abs(pos.y - testY) < 100
+        );
+        
+        if (!overlaps) {
+          newX = testX;
+          newY = testY;
+          break;
+        }
       }
     }
 
     createIdeaMutation.mutate({
       userId: user?.id || "",
-      title: newIdeaTitle,
-      description: newIdeaDescription,
-      color: "#E2E8F0",
+      title: newIdeaTitle.trim(),
+      description: newIdeaDescription.trim(),
+      groupId: finalGroupId || null,
+      color: finalColor,
       canvasX: newX,
       canvasY: newY,
-      groupId: null
     });
   };
 
@@ -847,26 +901,34 @@ export default function Canvas() {
                   New Idea
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
+              <DialogContent className="sm:max-w-lg">
                 <DialogHeader>
                   <DialogTitle>Create New Idea</DialogTitle>
                   <DialogDescription>
-                    Add your creative ideas to the canvas
+                    Add your creative ideas to the canvas with group organization
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
+                  {/* Title Field */}
                   <div className="grid gap-2">
                     <label htmlFor="idea-title" className="text-sm font-medium">
-                      Title
+                      Title <span className="text-red-500">*</span>
                     </label>
                     <Input
                       id="idea-title"
                       placeholder="Enter your idea title..."
                       value={newIdeaTitle}
-                      onChange={(e) => setNewIdeaTitle(e.target.value)}
+                      onChange={(e) => setNewIdeaTitle(e.target.value.slice(0, 100))}
                       data-testid="input-idea-title"
+                      maxLength={100}
                     />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>{newIdeaTitle.trim() ? '' : 'Title is required'}</span>
+                      <span>{newIdeaTitle.length}/100</span>
+                    </div>
                   </div>
+
+                  {/* Description Field */}
                   <div className="grid gap-2">
                     <label htmlFor="idea-description" className="text-sm font-medium">
                       Description
@@ -874,23 +936,100 @@ export default function Canvas() {
                     <Textarea
                       id="idea-description"
                       placeholder="Describe your idea in detail..."
-                      className="resize-none"
+                      className="resize-none h-20"
                       value={newIdeaDescription}
-                      onChange={(e) => setNewIdeaDescription(e.target.value)}
+                      onChange={(e) => setNewIdeaDescription(e.target.value.slice(0, 500))}
                       data-testid="textarea-idea-description"
+                      maxLength={500}
                     />
+                    <div className="text-xs text-gray-500 text-right">
+                      {newIdeaDescription.length}/500
+                    </div>
+                  </div>
+
+                  {/* Group Assignment */}
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Group (Optional)</label>
+                    <Select value={isCreatingNewGroup ? "create-new" : newIdeaGroupId} onValueChange={(value) => {
+                      if (value === "create-new") {
+                        setIsCreatingNewGroup(true);
+                        setNewIdeaGroupId("");
+                      } else {
+                        setIsCreatingNewGroup(false);
+                        setNewIdeaGroupId(value);
+                      }
+                    }}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a group..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">No Group</SelectItem>
+                        {groups.map((group: Group) => (
+                          <SelectItem key={group.id} value={group.id}>
+                            <div className="flex items-center">
+                              <div className="w-3 h-3 rounded-full mr-2" style={{ backgroundColor: group.color }} />
+                              {group.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                        <SelectItem value="create-new">+ Create New Group</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* New Group Name (if creating new) */}
+                  {isCreatingNewGroup && (
+                    <div className="grid gap-2">
+                      <label className="text-sm font-medium">New Group Name</label>
+                      <Input
+                        placeholder="Enter group name..."
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value.slice(0, 50))}
+                        maxLength={50}
+                      />
+                      <div className="text-xs text-gray-500 text-right">
+                        {newGroupName.length}/50
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Color Picker */}
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Color</label>
+                    <div className="flex gap-2">
+                      {['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'].map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className={`w-8 h-8 rounded-full border-2 ${
+                            newIdeaColor === color ? 'border-gray-800 ring-2 ring-gray-300' : 'border-gray-300'
+                          }`}
+                          style={{ backgroundColor: color }}
+                          onClick={() => setNewIdeaColor(color)}
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setIsNewIdeaDialogOpen(false)}>
+                  <Button variant="outline" onClick={() => {
+                    setIsNewIdeaDialogOpen(false);
+                    // Reset form on cancel
+                    setNewIdeaTitle("");
+                    setNewIdeaDescription("");
+                    setNewIdeaGroupId("");
+                    setNewIdeaColor("#3B82F6");
+                    setIsCreatingNewGroup(false);
+                    setNewGroupName("");
+                  }}>
                     Cancel
                   </Button>
                   <Button 
                     onClick={handleCreateIdea} 
-                    disabled={!newIdeaTitle.trim() || createIdeaMutation.isPending}
+                    disabled={!newIdeaTitle.trim() || createIdeaMutation.isPending || (isCreatingNewGroup && !newGroupName.trim())}
                     data-testid="button-save-idea"
                   >
-                    {createIdeaMutation.isPending ? 'Creating...' : 'Save Idea'}
+                    {createIdeaMutation.isPending ? 'Creating...' : 'Create Idea'}
                   </Button>
                 </DialogFooter>
               </DialogContent>
