@@ -82,7 +82,6 @@ export interface IStorage {
     activeProjects: number;
     tasksCreated: number;
     ideasCaptured: number;
-    collaborators: number;
   }>;
 }
 
@@ -176,7 +175,6 @@ export class DatabaseStorage implements IStorage {
     activeProjects: number;
     tasksCreated: number;
     ideasCaptured: number;
-    collaborators: number;
   }> {
     const userProjects = await db
       .select()
@@ -197,7 +195,6 @@ export class DatabaseStorage implements IStorage {
       activeProjects: userProjects.filter(p => p.status === 'active').length,
       tasksCreated: totalTasks,
       ideasCaptured: userIdeas.length,
-      collaborators: 1, // Single user for now
     };
   }
 

@@ -89,6 +89,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // PUT route (same as PATCH for project updates)
+  app.put('/api/projects/:id', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const project = await storage.getProject(req.params.id);
+      
+      if (!project || project.userId !== userId) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const updates = insertProjectSchema.partial().parse(req.body);
+      const updatedProject = await storage.updateProject(req.params.id, updates);
+      res.json(updatedProject);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      console.error("Error updating project:", error);
+      res.status(500).json({ message: "Failed to update project" });
+    }
+  });
+
   app.delete('/api/projects/:id', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;

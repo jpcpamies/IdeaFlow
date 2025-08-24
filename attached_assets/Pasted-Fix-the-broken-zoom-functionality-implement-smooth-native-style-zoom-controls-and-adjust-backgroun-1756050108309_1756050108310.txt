@@ -1,0 +1,50 @@
+Fix the broken zoom functionality, implement smooth native-style zoom controls, and adjust background dot size.
+
+ZOOM SYSTEM REPAIR:
+
+1. Debug and Fix Current Issues:
+   - Remove any broken wheel/trackpad event handlers that cause jumpy behavior
+   - Restore basic zoom functionality first (+ and - buttons working smoothly)
+   - Fix the broken "Fit to Canvas" button - must calculate and apply correct zoom level
+   - Ensure zoom percentage display updates correctly
+
+2. Smooth Zoom Implementation:
+   - Implement wheel event handling with proper deltaY detection
+   - Use smooth zoom increments (e.g., 10% steps for wheel, smaller for trackpad)
+   - Add momentum and easing for trackpad gestures
+   - Prevent default scroll behavior only on canvas area
+
+3. Zoom Center Point Logic:
+   - Zoom should center on mouse cursor position when using wheel
+   - Calculate mouse position in canvas coordinates
+   - Transform canvas origin to maintain cursor position during zoom
+   - Fall back to center zoom for button clicks
+
+4. Performance Optimization:
+   - Use requestAnimationFrame for smooth updates
+   - Throttle wheel events to prevent excessive firing
+   - Implement proper event cleanup to prevent memory leaks
+   - Maintain 60fps during zoom operations
+
+5. Zoom Constraints and Limits:
+   - Enforce min zoom (10-20%) and max zoom (500-1000%)
+   - Smooth clamping at boundaries
+   - Visual feedback when limits reached
+   - Consistent zoom steps between all input methods
+
+6. Background Dot Size Adjustment:
+   - Reduce background dot size to HALF of current size
+   - Current dots are too prominent when zoomed out and appear too close together
+   - New dot size should be ~1px diameter at 100% zoom
+   - Maintain same spacing (24px between centers) but smaller, subtler dots
+   - Keep light gray color (#E5E7EB) with current opacity
+
+7. Integration Testing:
+   - Test zoom with mouse wheel (both directions)
+   - Test zoom with trackpad gestures
+   - Verify + and - buttons work correctly
+   - Ensure Fit to Canvas calculates and applies correct zoom
+   - Test zoom while dragging and selecting cards
+   - Verify background dots scale appropriately and remain subtle at all zoom levels
+
+CRITICAL: The zoom must feel responsive and smooth like Figma or native applications. Background dots should be subtle visual guides, not distracting elements. If implementation is too complex, prioritize working basic zoom over broken advanced features.
