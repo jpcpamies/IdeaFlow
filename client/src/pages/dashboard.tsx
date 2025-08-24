@@ -36,7 +36,8 @@ import {
   Copy,
   Trash2,
   Check,
-  X
+  X,
+  LogOut
 } from "lucide-react";
 import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -337,32 +338,42 @@ export default function Dashboard() {
                 <Plus className="mr-2 w-4 h-4" />
                 {createProjectMutation.isPending ? 'Creating...' : 'New Project'}
               </Button>
-              <div className="flex items-center space-x-2 text-muted-foreground">
-                {user?.profileImageUrl ? (
-                  <img 
-                    src={user.profileImageUrl} 
-                    alt="User avatar" 
-                    className="w-8 h-8 rounded-full object-cover" 
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-                    <span className="text-xs font-medium text-gray-600">
-                      {user?.firstName?.[0] || user?.email?.[0] || '?'}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    className="flex items-center space-x-2 text-muted-foreground hover:text-gray-900"
+                    data-testid="button-user-menu"
+                  >
+                    {user?.profileImageUrl ? (
+                      <img 
+                        src={user.profileImageUrl} 
+                        alt="User avatar" 
+                        className="w-8 h-8 rounded-full object-cover"
+                        data-testid="img-user-avatar"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-medium text-gray-600">
+                          {user?.firstName?.[0] || user?.email?.[0] || '?'}
+                        </span>
+                      </div>
+                    )}
+                    <span data-testid="text-user-name">
+                      {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email || 'User'}
                     </span>
-                  </div>
-                )}
-                <span data-testid="text-username">
-                  {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email || 'User'}
-                </span>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={handleLogout}
-                  data-testid="button-logout"
-                >
-                  Logout
-                </Button>
-              </div>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={handleLogout}
+                    data-testid="button-logout"
+                  >
+                    <LogOut className="mr-2 w-4 h-4" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>

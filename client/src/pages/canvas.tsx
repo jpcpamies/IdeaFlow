@@ -59,7 +59,8 @@ import {
   Archive,
   Undo,
   CheckSquare,
-  RefreshCw
+  RefreshCw,
+  LogOut
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import type { Idea, Group, InsertIdea, TodoList, InsertTodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
@@ -2600,12 +2601,42 @@ export default function Canvas() {
         </div>
         
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
-              <User className="w-4 h-4 text-gray-600" />
-            </div>
-            <span className="text-sm text-gray-700">{user?.firstName || 'User'}</span>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button 
+                variant="ghost" 
+                className="flex items-center space-x-2 text-muted-foreground hover:text-gray-900"
+                data-testid="button-user-menu"
+              >
+                {user?.profileImageUrl ? (
+                  <img 
+                    src={user.profileImageUrl} 
+                    alt="User avatar" 
+                    className="w-8 h-8 rounded-full object-cover"
+                    data-testid="img-user-avatar"
+                  />
+                ) : (
+                  <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center">
+                    <span className="text-xs font-medium text-gray-600">
+                      {user?.firstName?.[0] || user?.email?.[0] || '?'}
+                    </span>
+                  </div>
+                )}
+                <span data-testid="text-user-name" className="text-sm text-gray-700">
+                  {user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user?.email || 'User'}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem 
+                onClick={() => window.location.href = "/api/logout"}
+                data-testid="button-logout"
+              >
+                <LogOut className="mr-2 w-4 h-4" />
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
