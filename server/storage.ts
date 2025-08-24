@@ -41,6 +41,7 @@ export interface IStorage {
   getProjectTasks(projectId: string): Promise<Task[]>;
   getTask(id: string): Promise<Task | undefined>;
   getTasksByIdeaId(ideaId: string): Promise<Task[]>;
+  unlinkTasksFromIdea(ideaId: string): Promise<number>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, updates: Partial<InsertTask>): Promise<Task>;
   deleteTask(id: string): Promise<void>;
@@ -170,6 +171,17 @@ export class DatabaseStorage implements IStorage {
       .from(tasks)
       .where(eq(tasks.ideaId, ideaId))
       .orderBy(tasks.createdAt);
+  }
+
+  async unlinkTasksFromIdea(ideaId: string): Promise<number> {
+    // Update all tasks that reference this idea to have null ideaId
+    const result = await db
+      .update(tasks)
+      .set({ ideaId: null })
+      .where(eq(tasks.ideaId, ideaId));
+    
+    // Return the number of affected rows
+    return result.rowCount || 0;
   }
 
   async createTask(task: InsertTask): Promise<Task> {

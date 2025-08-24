@@ -331,6 +331,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Unlink tasks from an idea (for group reassignments)
+  app.patch('/api/ideas/:id/unlink-tasks', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const ideaId = req.params.id;
+      
+      // Verify user owns the idea
+      const idea = await storage.getIdea(ideaId);
+      if (!idea || idea.userId !== userId) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+      
+      // Unlink all tasks that reference this idea
+      const unlinkedCount = await storage.unlinkTasksFromIdea(ideaId);
+      
+      res.json({ 
+        message: "Tasks unlinked successfully",
+        ideaId: ideaId,
+        unlinkedTaskCount: unlinkedCount
+      });
+    } catch (error) {
+      console.error("Error unlinking tasks from idea:", error);
+      res.status(500).json({ message: "Failed to unlink tasks from idea" });
+    }
+  });
+
   app.delete('/api/ideas/:id', isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user.claims.sub;

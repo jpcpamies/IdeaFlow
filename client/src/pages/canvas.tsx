@@ -2062,6 +2062,15 @@ export default function Canvas() {
       
       const newGroup = await groupRes.json();
       
+      // IMPORTANT: Clean up task associations before moving ideas
+      // Unlink tasks that are associated with ideas we're about to move
+      for (const ideaId of selectedCards) {
+        const unlinkRes = await apiRequest('PATCH', `/api/ideas/${ideaId}/unlink-tasks`, {});
+        if (!unlinkRes.ok) {
+          console.warn(`Failed to unlink tasks for idea ${ideaId}`);
+        }
+      }
+      
       // Assign selected cards to the new group
       const updatePromises = selectedCards.map(cardId => 
         updateIdeaMutation.mutateAsync({
@@ -2075,6 +2084,7 @@ export default function Canvas() {
       // Refresh all relevant data
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
       
       // Close modals and reset state
       setIsStandaloneGroupModalOpen(false);
