@@ -285,7 +285,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Project ID is required" });
       }
       
-      const ideaData = insertIdeaSchema.parse({ ...req.body, userId });
+      // Handle empty groupId by converting to null for "No Group" case
+      const requestData = {
+        ...req.body,
+        userId,
+        groupId: req.body.groupId === "" ? null : req.body.groupId
+      };
+      
+      const ideaData = insertIdeaSchema.parse(requestData);
       const idea = await storage.createIdea(ideaData);
       res.json(idea);
     } catch (error) {
@@ -306,7 +313,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "Idea not found" });
       }
       
-      const updates = insertIdeaSchema.partial().parse(req.body);
+      // Handle empty groupId by converting to null for "No Group" case
+      const requestData = { ...req.body };
+      if ('groupId' in requestData && requestData.groupId === "") {
+        requestData.groupId = null;
+      }
+      
+      const updates = insertIdeaSchema.partial().parse(requestData);
       const updatedIdea = await storage.updateIdea(req.params.id, updates);
       res.json(updatedIdea);
     } catch (error) {
