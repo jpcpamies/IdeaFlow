@@ -3657,7 +3657,7 @@ export default function Canvas() {
 
       {/* Delete Section Confirmation Dialog */}
       <Dialog open={isSectionDeleteConfirmOpen} onOpenChange={setIsSectionDeleteConfirmOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Delete Section</DialogTitle>
             <DialogDescription>
@@ -3671,7 +3671,7 @@ export default function Canvas() {
               })()}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex-col space-y-2 sm:space-y-0 sm:flex-row">
+          <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
             <Button 
               variant="outline" 
               onClick={() => {
@@ -3679,6 +3679,7 @@ export default function Canvas() {
                 setSectionToDelete(null);
               }}
               data-testid="button-cancel-delete-section"
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -3692,6 +3693,7 @@ export default function Canvas() {
                     onClick={() => confirmDeleteSection('tasks')}
                     disabled={deleteSectionMutation.isPending}
                     data-testid="button-delete-empty-section"
+                    className="w-full sm:w-auto"
                   >
                     {deleteSectionMutation.isPending ? 'Deleting...' : 'Delete Section'}
                   </Button>
@@ -3703,7 +3705,7 @@ export default function Canvas() {
                     variant="outline"
                     onClick={() => confirmDeleteSection('move')}
                     disabled={reorderTaskMutation.isPending || deleteSectionMutation.isPending}
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 w-full sm:w-auto"
                     data-testid="button-move-tasks-delete-section"
                   >
                     Move Tasks & Delete Section
@@ -3713,6 +3715,7 @@ export default function Canvas() {
                     onClick={() => confirmDeleteSection('tasks')}
                     disabled={deleteTaskMutation.isPending || deleteSectionMutation.isPending}
                     data-testid="button-delete-section-and-tasks"
+                    className="w-full sm:w-auto"
                   >
                     Delete Section & All Tasks
                   </Button>
