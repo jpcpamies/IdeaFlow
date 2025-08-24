@@ -880,31 +880,35 @@ export default function Canvas() {
     if (e.key === 'Enter') addNewTask(sectionId);
   }, []);
 
+  // Optimized general task input handlers
+  const handleGeneralTaskInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setGeneralTaskInput(e.target.value);
+  }, []);
+
+  const handleGeneralTaskInputKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addNewTask();
+    }
+  }, []);
+
   // Section reordering mutation
   const reorderSectionMutation = useMutation({
     mutationFn: async ({ id, orderIndex }: { id: string; orderIndex: number }) => {
-      console.log('API call:', { id, orderIndex });
       const response = await apiRequest('PATCH', `/api/sections/${id}`, { orderIndex });
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('API Error:', errorData);
         throw new Error(errorData.message || 'Failed to reorder section');
       }
-      const result = await response.json();
-      console.log('API Success:', result);
-      return result;
+      return response.json();
     },
-    onSuccess: (data) => {
-      console.log('Mutation success, invalidating queries...');
+    onSuccess: () => {
       // More comprehensive invalidation to ensure UI updates
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       
       // Force refetch to ensure order changes are visible immediately
       queryClient.refetchQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'] });
-    },
-    onError: (error) => {
-      console.error('Mutation failed:', error);
     }
   });
 
@@ -1148,14 +1152,6 @@ export default function Canvas() {
           newOrderIndex = overSection.orderIndex || 0;
         }
         
-        console.log('Section reorder:', {
-          activeSection: activeSection.name,
-          overSection: overSection.name,
-          activeIndex,
-          overIndex,
-          oldOrder: activeSection.orderIndex,
-          newOrder: newOrderIndex
-        });
 
 
         reorderSectionMutation.mutate({
@@ -3863,13 +3859,8 @@ export default function Canvas() {
                           <Input
                             placeholder="Add a task..."
                             value={generalTaskInput}
-                            onChange={(e) => setGeneralTaskInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                addNewTask();
-                              }
-                            }}
+                            onChange={handleGeneralTaskInputChange}
+                            onKeyDown={handleGeneralTaskInputKeyDown}
                             className="flex-1 h-8"
                             data-testid="input-new-general-task"
                           />
