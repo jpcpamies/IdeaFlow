@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
-import { insertProjectSchema, insertTaskSchema, insertIdeaSchema, insertGroupSchema } from "@shared/schema";
+import { insertProjectSchema, insertTaskSchema, insertIdeaSchema, insertGroupSchema, insertTodoListSchema } from "@shared/schema";
 import { z } from "zod";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -150,6 +150,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/tasks/:id', isAuthenticated, async (req: any, res) => {
     try {
+      const { id } = req.params;
+      const userId = req.user?.claims?.sub;
+      const { completed } = req.body;
+      
+      // Handle TodoList task completion toggle
+      if (typeof completed === 'boolean') {
+        const updatedTask = await storage.toggleTask(id, completed, userId);
+        return res.json(updatedTask);
+      }
+      
+      // Handle general task updates (legacy project tasks)
       const updates = insertTaskSchema.partial().parse(req.body);
       const updatedTask = await storage.updateTask(req.params.id, updates);
       res.json(updatedTask);
@@ -263,6 +274,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to delete idea" });
     }
   });
+
+  // TodoList routes
+  app.get("/api/todolists", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const todoLists = await storage.getUserTodoLists(userId);
+      res.json(todoLists);
+    } catch (error) {
+      console.error("Error fetching user todo lists:", error);
+      res.status(500).json({ message: "Failed to fetch todo lists" });
+    }
+  });
+
+  app.post("/api/todolists", isAuthenticated, async (req, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { groupId, name } = req.body;
+      
+      if (!groupId || !name) {
+        return res.status(400).json({ message: "Group ID and name are required" });
+      }
+
+      // Create the TodoList
+      const todoList = await storage.createTodoList({
+        userId,
+        groupId,
+        name,
+      });
+
+      // Get all ideas from the group and convert them to tasks
+      const groupIdeas = await storage.getUserIdeas(userId);
+      const ideasInGroup = groupIdeas.filter(idea => idea.groupId === groupId);
+      
+      // Create tasks from group ideas
+      for (let i = 0; i < ideasInGroup.length; i++) {
+        const idea = ideasInGroup[i];
+        await storage.createTask({
+          todoListId: todoList.id,
+          ideaId: idea.id,
+          title: idea.title,
+          completed: false,
+          orderIndex: i,
+        });
+      }
+
+      res.json(todoList);
+    } catch (error) {
+      console.error("Error creating todo list:", error);
+      res.status(500).json({ message: "Failed to create todo list" });
+    }
+  });
+
+  app.get("/api/todolists/:id/tasks", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const tasks = await storage.getTodoListTasks(id);
+      res.json(tasks);
+    } catch (error) {
+      console.error("Error fetching todo list tasks:", error);
+      res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
 
   // Group routes
   app.get('/api/groups', isAuthenticated, async (req: any, res) => {

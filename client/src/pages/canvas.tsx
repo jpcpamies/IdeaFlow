@@ -51,7 +51,7 @@ import {
   Maximize2
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import type { Idea, Group, InsertIdea } from "@shared/schema";
+import type { Idea, Group, InsertIdea, TodoList, Task } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 
 // Drag state interface
@@ -65,28 +65,7 @@ interface DragState {
   dragElements: Record<string, HTMLElement>;
 }
 
-// Mock todo lists for now (will be replaced with real data later)
-const mockTodoLists = [
-  {
-    id: 1,
-    title: "Project Planning",
-    tasks: [
-      { id: 1, text: "Define project scope and objectives", completed: true },
-      { id: 2, text: "Create detailed timeline and milestones", completed: false },
-      { id: 3, text: "Assign team members and responsibilities", completed: false }
-    ]
-  },
-  {
-    id: 2,
-    title: "Content Strategy",
-    tasks: [
-      { id: 4, text: "Audit existing content for gaps", completed: true },
-      { id: 5, text: "Develop content calendar for Q1", completed: true },
-      { id: 6, text: "Create brand voice guidelines", completed: false },
-      { id: 7, text: "Schedule social media campaigns", completed: false }
-    ]
-  }
-];
+// TodoList functionality - converts group ideas into actionable task lists
 
 export default function Canvas() {
   const { user } = useAuth() as { user: any };
@@ -146,6 +125,30 @@ export default function Canvas() {
   const { data: groups = [] } = useQuery({
     queryKey: ['/api/groups'],
   }) as { data: Group[] };
+
+  // Fetch TodoLists for the current user
+  const { data: todoLists = [] } = useQuery({
+    queryKey: ['/api/todolists'],
+  }) as { data: TodoList[] };
+
+  // Fetch tasks for TodoLists
+  const { data: allTasks = [] } = useQuery({
+    queryKey: ['/api/todolists', 'tasks'],
+    queryFn: async () => {
+      if (todoLists.length === 0) return [];
+      
+      const taskPromises = todoLists.map(async (todoList: TodoList) => {
+        const response = await apiRequest('GET', `/api/todolists/${todoList.id}/tasks`);
+        if (!response.ok) return [];
+        const tasks = await response.json();
+        return tasks.map((task: Task) => ({ ...task, todoListId: todoList.id }));
+      });
+      
+      const allTasksArrays = await Promise.all(taskPromises);
+      return allTasksArrays.flat();
+    },
+    enabled: todoLists.length > 0,
+  }) as { data: Task[] };
 
   // Filter ideas based on selected group
   const filteredIdeas = selectedFilter 
@@ -399,6 +402,49 @@ export default function Canvas() {
       console.error('Failed to delete idea:', error);
       alert('Failed to delete idea: ' + error.message);
     },
+  });
+
+  // Create TodoList mutation
+  const createTodoListMutation = useMutation({
+    mutationFn: async ({ groupId, name }: { groupId: string; name: string }) => {
+      console.log('Creating TodoList for group:', groupId, 'with name:', name);
+      const response = await apiRequest('POST', '/api/todolists', { groupId, name });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create TodoList');
+      }
+      return response.json();
+    },
+    onSuccess: (todoList) => {
+      console.log('TodoList created successfully:', todoList);
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+    },
+    onError: (error) => {
+      console.error('Failed to create TodoList:', error);
+      alert('Failed to create TodoList. Please try again.');
+    }
+  });
+
+  // Toggle task completion mutation
+  const toggleTaskMutation = useMutation({
+    mutationFn: async ({ taskId, completed }: { taskId: string; completed: boolean }) => {
+      console.log('Toggling task completion:', taskId, 'to', completed);
+      const response = await apiRequest('PATCH', `/api/tasks/${taskId}`, { completed });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to toggle task');
+      }
+      return response.json();
+    },
+    onSuccess: (updatedTask) => {
+      console.log('Task toggled successfully:', updatedTask);
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+    },
+    onError: (error) => {
+      console.error('Failed to toggle task:', error);
+      alert('Failed to update task. Please try again.');
+    }
   });
 
   // Zoom functions
@@ -1024,9 +1070,26 @@ export default function Canvas() {
   }, [dragState.isDragging]);
 
   // Task toggle function
-  const handleToggleTask = (taskId: number) => {
-    console.log('Toggle task:', taskId);
-    // TODO: Implement task toggling
+  // Create TodoList from group
+  const handleCreateTodoList = async (groupId: string) => {
+    console.log('Creating TodoList from group:', groupId);
+    const group = groups.find(g => g.id === groupId);
+    if (!group) return;
+    
+    // Check if group has ideas
+    const groupIdeas = ideas.filter(idea => idea.groupId === groupId);
+    if (groupIdeas.length === 0) {
+      alert('This group has no ideas to convert to tasks.');
+      return;
+    }
+    
+    createTodoListMutation.mutate({ groupId, name: group.name });
+  };
+
+  // Toggle task completion
+  const handleToggleTask = (taskId: string, currentCompleted: boolean) => {
+    console.log('Toggle task:', taskId, 'from', currentCompleted, 'to', !currentCompleted);
+    toggleTaskMutation.mutate({ taskId, completed: !currentCompleted });
   };
 
   // Calculate center position of selected cards for action button
@@ -1290,6 +1353,12 @@ export default function Canvas() {
                               <Edit className="mr-2 w-3 h-3" />
                               Edit Group
                             </DropdownMenuItem>
+                            {groupIdeaCount > 0 && (
+                              <DropdownMenuItem onClick={() => handleCreateTodoList(group.id)}>
+                                <Plus className="mr-2 w-3 h-3" />
+                                Create TodoList
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem 
                               onClick={() => handleDeleteGroup(group.id)}
                               className="text-red-600"
@@ -1310,7 +1379,7 @@ export default function Canvas() {
 
           <div className="p-4 border-t border-gray-200">
             <div className="text-xs text-gray-500 text-center">
-              {ideas.length} ideas • {mockTodoLists.reduce((acc, list) => acc + list.tasks.length, 0)} tasks
+              {ideas.length} ideas • {allTasks.length} tasks
             </div>
           </div>
         </aside>
@@ -1537,64 +1606,364 @@ export default function Canvas() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            {mockTodoLists.map((list) => (
-              <div key={list.id} className="bg-gray-50 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-medium text-gray-900 text-sm">{list.title}</h3>
-                  <Badge variant="outline" className="text-xs">
-                    {list.tasks.filter(t => !t.completed).length} left
-                  </Badge>
-                </div>
-                
-                <div className="space-y-2">
-                  {list.tasks.map((task) => (
-                    <div 
-                      key={task.id} 
-                      className="flex items-start space-x-2 group"
-                      data-testid={`task-${task.id}`}
-                    >
-                      <Checkbox
-                        checked={task.completed}
-                        onCheckedChange={() => handleToggleTask(task.id)}
-                        className="mt-0.5"
-                        data-testid={`checkbox-task-${task.id}`}
-                      />
-                      <span 
-                        className={`text-sm flex-1 ${
-                          task.completed 
-                            ? 'line-through text-gray-400' 
-                            : 'text-gray-700'
-                        }`}
-                      >
-                        {task.text}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full mt-3 border-dashed border-2 border-gray-300 text-gray-500 hover:border-gray-400 hover:text-gray-600"
-                  data-testid={`button-add-task-${list.id}`}
-                >
-                  <Plus className="mr-1 w-3 h-3" />
-                  Add task
-                </Button>
+            {todoLists.length === 0 ? (
+              <div className="text-center text-gray-500 text-sm py-4">
+                <p>No todo lists yet.</p>
+                <p className="mt-1">Create a group with ideas, then use "Create TodoList" from the group menu.</p>
               </div>
-            ))}
+            ) : (
+              todoLists.map((todoList: TodoList) => {
+                const todoListTasks = allTasks.filter((task: Task) => task.todoListId === todoList.id);
+                const completedCount = todoListTasks.filter((task: Task) => task.completed).length;
+                const totalCount = todoListTasks.length;
+                const pendingCount = totalCount - completedCount;
+                
+                return (
+                  <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                      {pendingCount > 0 && (
+                        <Badge variant="outline" className="text-xs">
+                          {pendingCount} left
+                        </Badge>
+                      )}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      {todoListTasks.map((task: Task) => (
+                        <div 
+                          key={task.id} 
+                          className="flex items-start space-x-2 group"
+                          data-testid={`task-${task.id}`}
+                        >
+                          <Checkbox
+                            checked={task.completed}
+                            onCheckedChange={() => handleToggleTask(task.id, task.completed)}
+                            className="mt-0.5"
+                            data-testid={`checkbox-task-${task.id}`}
+                          />
+                          <span 
+                            className={`text-sm flex-1 ${
+                              task.completed 
+                                ? 'line-through text-gray-400' 
+                                : 'text-gray-700'
+                            }`}
+                          >
+                            {task.title}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {totalCount > 0 && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="text-xs text-gray-500">
+                          {completedCount} of {totalCount} completed
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
 
           <div className="p-4 border-t border-gray-200">
-            <Button 
-              variant="outline" 
-              className="w-full" 
-              data-testid="button-new-todo-list"
+            <div className="text-xs text-gray-500 text-center">
+              {ideas.length} ideas • {allTasks.length} tasks
+            </div>
+          </div>
+        </aside>
+
+        {/* Center Canvas Area */}
+        <main className="flex-1 relative bg-white overflow-hidden">
+          {/* Zoom-Responsive Dot Grid Background */}
+          <div 
+            className="absolute inset-0 opacity-30 pointer-events-none"
+            style={{
+              backgroundImage: `radial-gradient(circle, #E5E7EB 2px, transparent 2px)`,
+              backgroundSize: `${50 * (zoomLevel / 100)}px ${50 * (zoomLevel / 100)}px`,
+              backgroundPosition: '0 0'
+            }}
+          />
+
+          {/* Zoom Controls */}
+          <div className="absolute top-4 right-4 flex items-center space-x-1 bg-white rounded-lg shadow-md p-1 z-10">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleZoomOut}
+              disabled={zoomLevel <= 50}
+              data-testid="button-zoom-out"
             >
-              <Plus className="mr-2 w-4 h-4" />
-              New To-Do List
+              <ZoomOut className="w-4 h-4" />
+            </Button>
+            <span className="px-2 text-xs text-gray-600 min-w-[3rem] text-center">
+              {Math.round(zoomLevel)}%
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleZoomIn}
+              disabled={zoomLevel >= 200}
+              data-testid="button-zoom-in"
+            >
+              <ZoomIn className="w-4 h-4" />
             </Button>
           </div>
+
+          {/* Main Canvas */}
+          <div 
+            ref={canvasRef}
+            className="w-full h-full cursor-grab active:cursor-grabbing"
+            style={{ 
+              transform: `scale(${zoomLevel / 100})`,
+              transformOrigin: '0 0',
+              width: `${10000 / (zoomLevel / 100)}px`,
+              height: `${10000 / (zoomLevel / 100)}px`,
+            }}
+          >
+            {/* Ideas */}
+            {ideas.map((idea) => (
+              <Card
+                key={idea.id}
+                data-card-id={idea.id}
+                className={`absolute w-60 cursor-move hover:shadow-lg transition-shadow duration-200 ${
+                  selectedCards.includes(idea.id) 
+                    ? 'ring-2 ring-blue-500 shadow-lg' 
+                    : ''
+                }`}
+                style={{ 
+                  left: idea.x, 
+                  top: idea.y,
+                  borderColor: idea.color || '#3B82F6',
+                  backgroundColor: `${idea.color || '#3B82F6'}10`,
+                }}
+                data-testid={`idea-card-${idea.id}`}
+              >
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <h3 className="text-sm font-medium text-gray-900 line-clamp-2">{idea.title}</h3>
+                    
+                    {/* Three-dot menu */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`idea-menu-${idea.id}`}
+                        >
+                          <MoreHorizontal className="w-3 h-3" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditIdea(idea);
+                          }}
+                        >
+                          <Edit className="mr-2 w-3 h-3" />
+                          Edit Idea
+                        </DropdownMenuItem>
+                        <DropdownMenuItem 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteConfirm(idea);
+                          }}
+                          className="text-red-600 focus:text-red-600"
+                        >
+                          <Trash2 className="mr-2 w-3 h-3" />
+                          Delete Idea
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                  <p className="text-xs text-gray-600 line-clamp-3 mb-2">{idea.description}</p>
+                  {idea.groupId && (
+                    <div className="flex items-center text-xs text-gray-500">
+                      <Tag className="w-3 h-3 mr-1" />
+                      {groups.find(g => g.id === idea.groupId)?.name}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+
+            {/* Groups */}
+            {groups.map((group) => {
+              const groupIdeas = ideas.filter(idea => idea.groupId === group.id);
+              if (groupIdeas.length === 0) return null;
+
+              const minX = Math.min(...groupIdeas.map(idea => idea.x)) - 20;
+              const minY = Math.min(...groupIdeas.map(idea => idea.y)) - 60;
+              const maxX = Math.max(...groupIdeas.map(idea => idea.x + 240)) + 20;
+              const maxY = Math.max(...groupIdeas.map(idea => idea.y + 120)) + 20;
+
+              return (
+                <div
+                  key={group.id}
+                  className="absolute border-2 border-dashed rounded-lg pointer-events-none"
+                  style={{
+                    left: minX,
+                    top: minY,
+                    width: maxX - minX,
+                    height: maxY - minY,
+                    borderColor: group.color || '#6B7280',
+                    backgroundColor: `${group.color || '#6B7280'}08`,
+                  }}
+                  data-testid={`group-boundary-${group.id}`}
+                >
+                  <div 
+                    className="absolute -top-8 left-0 px-2 py-1 rounded text-xs font-medium pointer-events-auto"
+                    style={{
+                      backgroundColor: group.color || '#6B7280',
+                      color: 'white',
+                    }}
+                  >
+                    {group.name} ({groupIdeas.length})
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Selection Box */}
+            {selectionBox && (
+              <div 
+                className="absolute border-2 border-blue-500 bg-blue-500 bg-opacity-10 pointer-events-none"
+                style={{
+                  left: Math.min(selectionBox.startX, selectionBox.endX),
+                  top: Math.min(selectionBox.startY, selectionBox.endY),
+                  width: Math.abs(selectionBox.endX - selectionBox.startX),
+                  height: Math.abs(selectionBox.endY - selectionBox.startY),
+                }}
+              />
+            )}
+
+            {/* Action Buttons for Selected Cards */}
+            {selectedCards.length > 0 && (() => {
+              const center = getSelectionCenter();
+              return (
+                <div 
+                  className="absolute flex space-x-2 pointer-events-auto z-20"
+                  style={{ left: center.x - 50, top: center.y - 80 }}
+                >
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setIsGroupActionsModalOpen(true)}
+                    className="shadow-lg"
+                    data-testid="button-group-selected"
+                  >
+                    <Tag className="mr-1 w-3 h-3" />
+                    Group ({selectedCards.length})
+                  </Button>
+                </div>
+              );
+            })()}
+
+            {/* Mouse Event Handlers */}
+            <div
+              className="absolute inset-0 w-full h-full"
+              onMouseDown={handleMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onMouseLeave={handleMouseUp}
+            />
+          </div>
+        </main>
+
+        {/* Right Sidebar - Task Management */}
+        <aside 
+          className={`${
+            isRightSidebarOpen ? 'w-80' : 'w-12'
+          } bg-white border-l border-gray-200 flex flex-col transition-all duration-300 z-10`}
+          style={{
+            marginLeft: isRightSidebarOpen ? '0' : '0'
+          }}
+        >
+          <div className="p-4 border-b border-gray-200">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+              className="w-full justify-between"
+              data-testid="button-toggle-sidebar"
+            >
+              <span className="flex items-center">
+                <ClipboardList className="mr-2 w-4 h-4" />
+                Tasks
+              </span>
+              {isRightSidebarOpen && <ChevronRight className="w-4 h-4" />}
+            </Button>
+          </div>
+
+          {isRightSidebarOpen && (
+            <div className="flex-1 overflow-y-auto p-4 space-y-6">
+              {todoLists.length === 0 ? (
+                <div className="text-center text-gray-500 text-sm py-4">
+                  <p>No todo lists yet.</p>
+                  <p className="mt-1">Create a group with ideas, then use "Create TodoList" from the group menu.</p>
+                </div>
+              ) : (
+                todoLists.map((todoList: TodoList) => {
+                  const todoListTasks = allTasks.filter((task: Task) => task.todoListId === todoList.id);
+                  const completedCount = todoListTasks.filter((task: Task) => task.completed).length;
+                  const totalCount = todoListTasks.length;
+                  const pendingCount = totalCount - completedCount;
+                  
+                  return (
+                    <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                        {pendingCount > 0 && (
+                          <Badge variant="outline" className="text-xs">
+                            {pendingCount} left
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {todoListTasks.map((task: Task) => (
+                          <div 
+                            key={task.id} 
+                            className="flex items-start space-x-2 group"
+                            data-testid={`task-${task.id}`}
+                          >
+                            <Checkbox
+                              checked={task.completed}
+                              onCheckedChange={() => handleToggleTask(task.id, task.completed)}
+                              className="mt-0.5"
+                              data-testid={`checkbox-task-${task.id}`}
+                            />
+                            <span 
+                              className={`text-sm flex-1 ${
+                                task.completed 
+                                  ? 'line-through text-gray-400' 
+                                  : 'text-gray-700'
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {totalCount > 0 && (
+                        <div className="mt-3 pt-3 border-t border-gray-100">
+                          <div className="text-xs text-gray-500">
+                            {completedCount} of {totalCount} completed
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
         </aside>
 
         {/* Sidebar Toggle Button (when collapsed) */}

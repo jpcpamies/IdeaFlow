@@ -62,6 +62,10 @@ export interface IStorage {
   updateTodoList(id: string, updates: Partial<InsertTodoList>): Promise<TodoList>;
   deleteTodoList(id: string): Promise<void>;
   
+  // Task operations for TodoLists
+  getTodoListTasks(todoListId: string): Promise<Task[]>;
+  toggleTask(id: string, completed: boolean, userId: string): Promise<Task>;
+  
   // Statistics
   getUserStats(userId: string): Promise<{
     activeProjects: number;
@@ -296,6 +300,24 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTodoList(id: string): Promise<void> {
     await db.delete(todoLists).where(eq(todoLists.id, id));
+  }
+  
+  // Task operations for TodoLists
+  async getTodoListTasks(todoListId: string): Promise<Task[]> {
+    return await db
+      .select()
+      .from(tasks)
+      .where(eq(tasks.todoListId, todoListId))
+      .orderBy(tasks.orderIndex, tasks.createdAt);
+  }
+  
+  async toggleTask(id: string, completed: boolean, userId: string): Promise<Task> {
+    const [updatedTask] = await db
+      .update(tasks)
+      .set({ completed })
+      .where(eq(tasks.id, id))
+      .returning();
+    return updatedTask;
   }
 }
 
