@@ -3705,7 +3705,7 @@ export default function Canvas() {
                     variant="outline"
                     onClick={() => confirmDeleteSection('move')}
                     disabled={reorderTaskMutation.isPending || deleteSectionMutation.isPending}
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50 w-full sm:w-auto"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-100 hover:text-blue-800 w-full sm:w-auto"
                     data-testid="button-move-tasks-delete-section"
                   >
                     Move Tasks & Delete Section
