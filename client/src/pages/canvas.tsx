@@ -120,9 +120,9 @@ export default function Canvas() {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [isGroupActionsModalOpen, setIsGroupActionsModalOpen] = useState(false);
   const [isAssignGroupModalOpen, setIsAssignGroupModalOpen] = useState(false);
-  const [isCreateNewGroupModalOpen, setIsCreateNewGroupModalOpen] = useState(false);
-  const [newGroupFromSelectionName, setNewGroupFromSelectionName] = useState("");
-  const [newGroupFromSelectionColor, setNewGroupFromSelectionColor] = useState("#3B82F6");
+  const [isStandaloneGroupModalOpen, setIsStandaloneGroupModalOpen] = useState(false);
+  const [standaloneGroupName, setStandaloneGroupName] = useState("");
+  const [standaloneGroupColor, setStandaloneGroupColor] = useState("#3B82F6");
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null); // null = "All Ideas"
   const [editingGroup, setEditingGroup] = useState<Group | null>(null);
   const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
@@ -2040,19 +2040,27 @@ export default function Canvas() {
   };
 
   const handleCreateNewGroup = () => {
-    // Open the create new group modal instead of using prompt
-    setIsCreateNewGroupModalOpen(true);
+    // Open the standalone group creation modal
+    setIsStandaloneGroupModalOpen(true);
   };
 
-  const handleSubmitNewGroupFromSelection = async () => {
-    if (!newGroupFromSelectionName.trim()) return;
+  const handleSubmitStandaloneGroup = async () => {
+    if (!standaloneGroupName.trim()) return;
     
     try {
-      // Create the new group
-      const newGroup = await createGroupMutation.mutateAsync({
-        name: newGroupFromSelectionName.trim(),
-        color: newGroupFromSelectionColor
+      // Create the new group  
+      const groupRes = await apiRequest('POST', '/api/groups', {
+        name: standaloneGroupName.trim(),
+        color: standaloneGroupColor,
+        projectId: projectId!
       });
+      
+      if (!groupRes.ok) {
+        const errorData = await groupRes.json();
+        throw new Error(errorData.message || 'Failed to create group');
+      }
+      
+      const newGroup = await groupRes.json();
       
       // Assign selected cards to the new group
       const updatePromises = selectedCards.map(cardId => 
@@ -2069,11 +2077,11 @@ export default function Canvas() {
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
       
       // Close modals and reset state
-      setIsCreateNewGroupModalOpen(false);
+      setIsStandaloneGroupModalOpen(false);
       setIsGroupActionsModalOpen(false);
       setSelectedCards([]);
-      setNewGroupFromSelectionName("");
-      setNewGroupFromSelectionColor("#3B82F6");
+      setStandaloneGroupName("");
+      setStandaloneGroupColor("#3B82F6");
     } catch (error) {
       console.error('Failed to create group:', error);
       alert('Failed to create group. Please try again.');
@@ -3941,6 +3949,70 @@ export default function Canvas() {
               data-testid="button-save-task-edit"
             >
               Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Standalone Group Creation Modal */}
+      <Dialog open={isStandaloneGroupModalOpen} onOpenChange={setIsStandaloneGroupModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create New Group</DialogTitle>
+            <DialogDescription>
+              Create a new group for the selected ideas
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium">Group Name *</label>
+              <Input
+                placeholder="Enter group name..."
+                value={standaloneGroupName}
+                onChange={(e) => setStandaloneGroupName(e.target.value.slice(0, 50))}
+                maxLength={50}
+                className="mt-1"
+                data-testid="input-standalone-group-name"
+              />
+              <div className="text-xs text-gray-500 text-right mt-1">
+                {standaloneGroupName.length}/50
+              </div>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium">Color</label>
+              <div className="flex gap-2 mt-2">
+                {['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#06B6D4', '#84CC16'].map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    className={`w-8 h-8 rounded-full border-2 ${
+                      standaloneGroupColor === color ? 'border-gray-800 ring-2 ring-gray-300' : 'border-gray-300'
+                    }`}
+                    style={{ backgroundColor: color }}
+                    onClick={() => setStandaloneGroupColor(color)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setIsStandaloneGroupModalOpen(false);
+                setStandaloneGroupName("");
+                setStandaloneGroupColor("#3B82F6");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSubmitStandaloneGroup}
+              disabled={!standaloneGroupName.trim()}
+              data-testid="button-create-standalone-group"
+            >
+              Create Group
             </Button>
           </DialogFooter>
         </DialogContent>
