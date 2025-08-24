@@ -1,0 +1,49 @@
+Fix critical TodoList modal issues: drag-and-drop between sections and slow text input performance.
+
+DRAG-AND-DROP SECTION CROSSING:
+
+1. Enable Cross-Section Dragging:
+   - Allow tasks to be dragged from one section to another
+   - Remove section boundary constraints that prevent crossing
+   - Implement proper drop zones for each section
+   - Show visual feedback when hovering over target sections
+
+2. Drag Behavior Improvements:
+   - Extend drag detection beyond section boundaries
+   - Add section highlighting when dragging task over it
+   - Show insertion line/placeholder in target section
+   - Smooth transitions when crossing section borders
+
+3. Database Updates for Section Changes:
+   - UPDATE tasks SET section_id=? WHERE id=? when dropped in new section
+   - Maintain proper order_index within new section
+   - Handle moving from "General Tasks" to custom sections
+   - Update task counts for both source and target sections
+
+4. Visual Feedback During Drag:
+   - Highlight valid drop zones
+   - Show "ghost" placeholder in target position
+   - Dim or hide invalid drop areas
+   - Smooth animations for section transitions
+
+TEXT INPUT PERFORMANCE ISSUES:
+
+5. Fix Slow Text Input:
+   - Identify and remove excessive re-renders during typing
+   - Debounce input handlers if causing performance issues
+   - Check for memory leaks in input event listeners
+   - Optimize React state updates for text inputs
+
+6. Input State Isolation:
+   - Ensure each section's input has independent state
+   - Remove global state conflicts between section inputs
+   - Fix any event handler conflicts causing lag
+   - Proper cleanup of input event listeners
+
+7. Performance Optimization:
+   - Use React.memo for section components if needed
+   - Implement proper key props for dynamic lists
+   - Remove unnecessary re-renders during text input
+   - Check for infinite render loops
+
+CRITICAL: Tasks must drag smoothly between sections with immediate visual feedback and database persistence. Text input must be responsive without lag or interference.

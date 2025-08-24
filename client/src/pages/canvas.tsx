@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -746,6 +746,15 @@ export default function Canvas() {
     })
   );
 
+  // Optimized section input handlers to prevent re-renders
+  const handleSectionInputChange = useCallback((sectionId: string, value: string) => {
+    setSectionInputs(prev => ({ ...prev, [sectionId]: value }));
+  }, []);
+
+  const handleSectionInputKeyDown = useCallback((e: React.KeyboardEvent, sectionId: string) => {
+    if (e.key === 'Enter') addNewTask(sectionId);
+  }, []);
+
   // TodoList Modal Functions
   const openTodoListModal = (todoList: TodoList) => {
     setSelectedTodoList(todoList);
@@ -968,7 +977,7 @@ export default function Canvas() {
         </div>
         
         <Checkbox
-          checked={task.completed}
+          checked={Boolean(task.completed)}
           onCheckedChange={(checked) => {
             toggleTaskMutation.mutate({
               taskId: task.id,
@@ -2326,8 +2335,8 @@ export default function Canvas() {
                           data-testid={`task-${task.id}`}
                         >
                           <Checkbox
-                            checked={task.completed}
-                            onCheckedChange={() => handleToggleTask(task.id, task.completed)}
+                            checked={Boolean(task.completed)}
+                            onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
                             className="mt-0.5"
                             data-testid={`checkbox-task-${task.id}`}
                           />
@@ -2698,6 +2707,8 @@ export default function Canvas() {
               collisionDetection={closestCenter}
               onDragEnd={handleDragEnd}
             >
+              {/* Unified SortableContext for ALL tasks to enable cross-section dragging */}
+              <SortableContext items={todoListTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
               {/* Add New Section */}
               <div className="flex space-x-2 p-3 bg-gray-50 rounded-lg">
                 <Input
@@ -2810,21 +2821,19 @@ export default function Canvas() {
                         {!isCollapsed && (
                           <div className="space-y-3">
                             {/* Incomplete Tasks */}
-                            <SortableContext items={incompleteTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+                            <div className="space-y-2">
                               {incompleteTasks.map(task => (
                                 <SortableTaskItem key={task.id} task={task} />
                               ))}
-                            </SortableContext>
+                            </div>
 
                             {/* Add New Task to Section */}
                             <div className="flex space-x-2 pt-2 border-t border-gray-100">
                               <Input
                                 placeholder="Add a task..."
                                 value={sectionInputs[section.id] || ''}
-                                onChange={(e) => setSectionInputs(prev => ({ ...prev, [section.id]: e.target.value }))}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') addNewTask(section.id);
-                                }}
+                                onChange={(e) => handleSectionInputChange(section.id, e.target.value)}
+                                onKeyDown={(e) => handleSectionInputKeyDown(e, section.id)}
                                 className="flex-1 h-8"
                                 data-testid={`input-new-task-${section.id}`}
                               />
@@ -2844,11 +2853,11 @@ export default function Canvas() {
                                 <h4 className="text-sm font-medium text-gray-500 mb-2">
                                   Completed ({completedTasks.length})
                                 </h4>
-                                <SortableContext items={completedTasks.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
+                                <div className="space-y-2">
                                   {completedTasks.map(task => (
                                     <SortableTaskItem key={task.id} task={task} />
                                   ))}
-                                </SortableContext>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -2877,13 +2886,11 @@ export default function Canvas() {
                       </h3>
 
                       {/* Incomplete Unsectioned Tasks */}
-                      <SortableContext items={incompleteUnsectioned.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
-                        <div className="space-y-2">
-                          {incompleteUnsectioned.map(task => (
-                            <SortableTaskItem key={task.id} task={task} />
-                          ))}
-                        </div>
-                      </SortableContext>
+                      <div className="space-y-2">
+                        {incompleteUnsectioned.map(task => (
+                          <SortableTaskItem key={task.id} task={task} />
+                        ))}
+                      </div>
 
                       {/* Add New General Task */}
                       <div className="flex space-x-2 pt-3 mt-3 border-t border-gray-200">
@@ -2913,13 +2920,11 @@ export default function Canvas() {
                           <h4 className="text-sm font-medium text-gray-500 mb-2">
                             Completed ({completedUnsectioned.length})
                           </h4>
-                          <SortableContext items={completedUnsectioned.map(task => `task-${task.id}`)} strategy={verticalListSortingStrategy}>
-                            <div className="space-y-2">
-                              {completedUnsectioned.map(task => (
-                                <SortableTaskItem key={task.id} task={task} />
-                              ))}
-                            </div>
-                          </SortableContext>
+                          <div className="space-y-2">
+                            {completedUnsectioned.map(task => (
+                              <SortableTaskItem key={task.id} task={task} />
+                            ))}
+                          </div>
                         </div>
                       )}
                       </div>
@@ -2927,6 +2932,7 @@ export default function Canvas() {
                   );
                 })()}
               </div>
+              </SortableContext>
             </DndContext>
           </div>
 
