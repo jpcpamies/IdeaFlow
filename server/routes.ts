@@ -347,7 +347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // TodoList routes
-  app.get("/api/todolists", isAuthenticated, async (req, res) => {
+  app.get("/api/todolists", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const todoLists = await storage.getUserTodoLists(userId);
@@ -358,7 +358,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/todolists", isAuthenticated, async (req, res) => {
+  app.post("/api/todolists", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
       const { groupId, name } = req.body;
@@ -397,6 +397,137 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update TodoList
+  app.patch("/api/todolists/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      // Validate updates using zod schema - only allow certain fields
+      const allowedUpdates = insertTodoListSchema.partial().pick({
+        name: true,
+        archived: true
+      }).parse(req.body);
+      
+      const updatedTodoList = await storage.updateTodoList(id, allowedUpdates);
+      res.json(updatedTodoList);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid update data", errors: error.errors });
+      }
+      console.error("Error updating todo list:", error);
+      res.status(500).json({ message: "Failed to update todo list" });
+    }
+  });
+
+  // Delete TodoList with all its tasks and sections
+  app.delete("/api/todolists/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      await storage.deleteTodoList(id);
+      res.json({ message: "TodoList deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting todo list:", error);
+      res.status(500).json({ message: "Failed to delete todo list" });
+    }
+  });
+
+  // Duplicate TodoList with all tasks and sections
+  app.post("/api/todolists/:id/duplicate", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the original todolist
+      const originalTodoList = await storage.getTodoList(id);
+      if (!originalTodoList || originalTodoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      // Create duplicate todolist
+      const duplicatedTodoList = await storage.createTodoList({
+        userId,
+        groupId: originalTodoList.groupId,
+        name: `${originalTodoList.name} (Copy)`,
+      });
+      
+      // Get all sections from original todolist
+      const originalSections = await storage.getTodoListSections(id);
+      const sectionMapping: Record<string, string> = {};
+      
+      // Duplicate sections
+      for (const section of originalSections) {
+        const duplicatedSection = await storage.createSection({
+          todoListId: duplicatedTodoList.id,
+          name: section.name,
+          orderIndex: section.orderIndex,
+        });
+        sectionMapping[section.id] = duplicatedSection.id;
+      }
+      
+      // Get all tasks from original todolist
+      const originalTasks = await storage.getTodoListTasks(id);
+      
+      // Duplicate tasks
+      for (const task of originalTasks) {
+        await storage.createTask({
+          todoListId: duplicatedTodoList.id,
+          sectionId: task.sectionId ? sectionMapping[task.sectionId] : null,
+          title: task.title,
+          completed: false, // Reset completion status for duplicated tasks
+          orderIndex: task.orderIndex,
+        });
+      }
+      
+      res.json(duplicatedTodoList);
+    } catch (error) {
+      console.error("Error duplicating todo list:", error);
+      res.status(500).json({ message: "Failed to duplicate todo list" });
+    }
+  });
+
+  // Archive/Unarchive TodoList
+  app.patch("/api/todolists/:id/archive", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Validate archived field
+      const { archived } = z.object({
+        archived: z.boolean()
+      }).parse(req.body);
+      
+      // Verify user owns the todolist
+      const todoList = await storage.getTodoList(id);
+      if (!todoList || todoList.userId !== userId) {
+        return res.status(404).json({ message: "TodoList not found" });
+      }
+      
+      const updatedTodoList = await storage.updateTodoList(id, { archived });
+      res.json(updatedTodoList);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid archive data", errors: error.errors });
+      }
+      console.error("Error archiving todo list:", error);
+      res.status(500).json({ message: "Failed to archive todo list" });
+    }
+  });
+
   app.get("/api/todolists/:id/tasks", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
@@ -405,6 +536,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching todo list tasks:", error);
       res.status(500).json({ message: "Failed to fetch tasks" });
+    }
+  });
+
+  // Bulk task operations
+  app.patch("/api/tasks/bulk-update", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      // Validate request body
+      const { taskIds, updates } = z.object({
+        taskIds: z.array(z.string()).min(1, "At least one task ID is required"),
+        updates: insertTaskSchema.partial().pick({
+          completed: true,
+          sectionId: true,
+          orderIndex: true,
+          title: true
+        })
+      }).parse(req.body);
+      
+      const updatedTasks = await storage.bulkUpdateTasks(taskIds, updates, userId);
+      res.json({ updatedTasks });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid bulk update data", errors: error.errors });
+      }
+      console.error("Error bulk updating tasks:", error);
+      res.status(500).json({ message: "Failed to bulk update tasks" });
+    }
+  });
+
+  app.delete("/api/tasks/bulk-delete", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      // Validate request body
+      const { taskIds } = z.object({
+        taskIds: z.array(z.string()).min(1, "At least one task ID is required")
+      }).parse(req.body);
+      
+      await storage.bulkDeleteTasks(taskIds, userId);
+      res.json({ message: `Successfully deleted ${taskIds.length} tasks`, deletedTaskIds: taskIds });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid bulk delete data", errors: error.errors });
+      }
+      console.error("Error bulk deleting tasks:", error);
+      res.status(500).json({ message: "Failed to bulk delete tasks" });
+    }
+  });
+
+  app.patch("/api/tasks/move-to-todolist", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      
+      // Validate request body
+      const { taskIds, targetTodoListId } = z.object({
+        taskIds: z.array(z.string()).min(1, "At least one task ID is required"),
+        targetTodoListId: z.string().min(1, "Target TodoList ID is required")
+      }).parse(req.body);
+      
+      const movedTasks = await storage.moveTasksToTodoList(taskIds, targetTodoListId, userId);
+      res.json({ movedTasks });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: "Invalid move data", errors: error.errors });
+      }
+      console.error("Error moving tasks to todolist:", error);
+      res.status(500).json({ message: "Failed to move tasks" });
     }
   });
 
@@ -466,6 +665,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error deleting section:", error);
       res.status(500).json({ message: "Failed to delete section" });
+    }
+  });
+
+  // Bulk task operations
+  app.patch("/api/tasks/bulk-update", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { taskIds, updates } = req.body;
+      
+      if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        return res.status(400).json({ message: "Task IDs array is required" });
+      }
+      
+      const updatedTasks = await storage.bulkUpdateTasks(taskIds, updates, userId);
+      res.json(updatedTasks);
+    } catch (error) {
+      console.error("Error bulk updating tasks:", error);
+      res.status(500).json({ message: "Failed to bulk update tasks" });
+    }
+  });
+
+  app.delete("/api/tasks/bulk-delete", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { taskIds } = req.body;
+      
+      if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        return res.status(400).json({ message: "Task IDs array is required" });
+      }
+      
+      await storage.bulkDeleteTasks(taskIds, userId);
+      res.json({ message: `Successfully deleted ${taskIds.length} tasks` });
+    } catch (error) {
+      console.error("Error bulk deleting tasks:", error);
+      res.status(500).json({ message: "Failed to bulk delete tasks" });
+    }
+  });
+
+  app.patch("/api/tasks/move-to-todolist", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { taskIds, targetTodoListId } = req.body;
+      
+      if (!Array.isArray(taskIds) || taskIds.length === 0) {
+        return res.status(400).json({ message: "Task IDs array is required" });
+      }
+      
+      // Verify user owns the target todolist
+      const targetTodoList = await storage.getTodoList(targetTodoListId);
+      if (!targetTodoList || targetTodoList.userId !== userId) {
+        return res.status(404).json({ message: "Target TodoList not found" });
+      }
+      
+      const movedTasks = await storage.moveTasksToTodoList(taskIds, targetTodoListId, userId);
+      res.json(movedTasks);
+    } catch (error) {
+      console.error("Error moving tasks to todolist:", error);
+      res.status(500).json({ message: "Failed to move tasks" });
     }
   });
 

@@ -22,7 +22,7 @@ import {
   type InsertSection,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, inArray } from "drizzle-orm";
 
 // Interface for storage operations
 export interface IStorage {
@@ -72,6 +72,11 @@ export interface IStorage {
   toggleTask(id: string, completed: boolean, userId: string): Promise<Task>;
   updateTaskOrder(id: string, orderIndex: number, sectionId?: string | null): Promise<Task>;
   clearCompletedTasks(todoListId: string, userId: string): Promise<void>;
+  
+  // Bulk task operations
+  bulkUpdateTasks(taskIds: string[], updates: Partial<InsertTask>, userId: string): Promise<Task[]>;
+  bulkDeleteTasks(taskIds: string[], userId: string): Promise<void>;
+  moveTasksToTodoList(taskIds: string[], targetTodoListId: string, userId: string): Promise<Task[]>;
   
   // Section operations
   getTodoListSections(todoListId: string): Promise<Section[]>;
@@ -315,7 +320,7 @@ export class DatabaseStorage implements IStorage {
   async updateTodoList(id: string, updates: Partial<InsertTodoList>): Promise<TodoList> {
     const [updatedTodoList] = await db
       .update(todoLists)
-      .set(updates)
+      .set({ ...updates, updatedAt: new Date() })
       .where(eq(todoLists.id, id))
       .returning();
     return updatedTodoList;
@@ -364,6 +369,99 @@ export class DatabaseStorage implements IStorage {
         eq(tasks.todoListId, todoListId),
         eq(tasks.completed, true)
       ));
+  }
+
+  // Bulk task operations
+  async bulkUpdateTasks(taskIds: string[], updates: Partial<InsertTask>, userId: string): Promise<Task[]> {
+    // First verify all tasks belong to user's todolists
+    const userTodoLists = await this.getUserTodoLists(userId);
+    const userTodoListIds = userTodoLists.map(tl => tl.id);
+    
+    const tasksToUpdate = await db
+      .select()
+      .from(tasks)
+      .where(and(
+        inArray(tasks.id, taskIds),
+        inArray(tasks.todoListId, userTodoListIds)
+      ));
+    
+    if (tasksToUpdate.length !== taskIds.length) {
+      throw new Error('Some tasks not found or not owned by user');
+    }
+    
+    // Update tasks
+    const updatedTasks = await db
+      .update(tasks)
+      .set(updates)
+      .where(inArray(tasks.id, taskIds))
+      .returning();
+    
+    return updatedTasks;
+  }
+
+  async bulkDeleteTasks(taskIds: string[], userId: string): Promise<void> {
+    // First verify all tasks belong to user's todolists
+    const userTodoLists = await this.getUserTodoLists(userId);
+    const userTodoListIds = userTodoLists.map(tl => tl.id);
+    
+    const tasksToDelete = await db
+      .select()
+      .from(tasks)
+      .where(and(
+        inArray(tasks.id, taskIds),
+        inArray(tasks.todoListId, userTodoListIds)
+      ));
+    
+    if (tasksToDelete.length !== taskIds.length) {
+      throw new Error('Some tasks not found or not owned by user');
+    }
+    
+    await db.delete(tasks).where(inArray(tasks.id, taskIds));
+  }
+
+  async moveTasksToTodoList(taskIds: string[], targetTodoListId: string, userId: string): Promise<Task[]> {
+    // First verify all tasks belong to user's todolists
+    const userTodoLists = await this.getUserTodoLists(userId);
+    const userTodoListIds = userTodoLists.map(tl => tl.id);
+    
+    // Verify target todolist belongs to user
+    const targetTodoList = await this.getTodoList(targetTodoListId);
+    if (!targetTodoList || targetTodoList.userId !== userId) {
+      throw new Error('Target TodoList not found or not owned by user');
+    }
+    
+    const tasksToMove = await db
+      .select()
+      .from(tasks)
+      .where(and(
+        inArray(tasks.id, taskIds),
+        inArray(tasks.todoListId, userTodoListIds)
+      ));
+    
+    if (tasksToMove.length !== taskIds.length) {
+      throw new Error('Some tasks not found or not owned by user');
+    }
+    
+    // Get max order index in target todolist
+    const targetTasks = await this.getTodoListTasks(targetTodoListId);
+    const maxOrder = Math.max(...targetTasks.map(t => t.orderIndex || 0), 0);
+    
+    // Move tasks and assign distinct orderIndex values
+    const movedTasks: Task[] = [];
+    for (let i = 0; i < taskIds.length; i++) {
+      const [movedTask] = await db
+        .update(tasks)
+        .set({ 
+          todoListId: targetTodoListId,
+          sectionId: null, // Clear section when moving between todolists
+          orderIndex: maxOrder + i + 1 // Assign distinct order indices
+        })
+        .where(eq(tasks.id, taskIds[i]))
+        .returning();
+      movedTasks.push(movedTask);
+    }
+    
+    return movedTasks;
   }
   
   // Section operations

@@ -54,10 +54,14 @@ import {
   ClipboardList,
   GripVertical,
   Check,
-  X
+  X,
+  Copy,
+  Archive,
+  Undo,
+  CheckSquare
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import type { Idea, Group, InsertIdea, TodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
+import type { Idea, Group, InsertIdea, TodoList, InsertTodoList, Task, Section, InsertTask, InsertSection } from "@shared/schema";
 import { useAuth } from "@/hooks/useAuth";
 import {
   DndContext,
@@ -116,6 +120,16 @@ export default function Canvas() {
   const [selectedTodoList, setSelectedTodoList] = useState<TodoList | null>(null);
   const [isTodoListModalOpen, setIsTodoListModalOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  
+  // TodoList management states
+  const [editingTodoListId, setEditingTodoListId] = useState<string | null>(null);
+  const [editingTodoListTitle, setEditingTodoListTitle] = useState('');
+  const [deleteTodoListConfirmOpen, setDeleteTodoListConfirmOpen] = useState(false);
+  const [todoListToDelete, setTodoListToDelete] = useState<TodoList | null>(null);
+  
+  // Bulk task operations states
+  const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
+  const [bulkActionMode, setBulkActionMode] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
@@ -770,6 +784,117 @@ export default function Canvas() {
     }
   });
 
+  // TodoList CRUD mutations
+  const updateTodoListMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<InsertTodoList> }) => {
+      const response = await apiRequest('PATCH', `/api/todolists/${id}`, updates);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to update TodoList');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      setEditingTodoListId(null);
+      setEditingTodoListTitle('');
+    }
+  });
+
+  const deleteTodoListMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest('DELETE', `/api/todolists/${id}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to delete TodoList');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      setDeleteTodoListConfirmOpen(false);
+      setTodoListToDelete(null);
+      closeTodoListModal();
+    }
+  });
+
+  const duplicateTodoListMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await apiRequest('POST', `/api/todolists/${id}/duplicate`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to duplicate TodoList');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+    }
+  });
+
+  const archiveTodoListMutation = useMutation({
+    mutationFn: async ({ id, archived }: { id: string; archived: boolean }) => {
+      const response = await apiRequest('PATCH', `/api/todolists/${id}/archive`, { archived });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to archive TodoList');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+    }
+  });
+
+  // Bulk task operations mutations
+  const bulkUpdateTasksMutation = useMutation({
+    mutationFn: async ({ taskIds, updates }: { taskIds: string[]; updates: Partial<InsertTask> }) => {
+      const response = await apiRequest('PATCH', '/api/tasks/bulk-update', { taskIds, updates });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to bulk update tasks');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      setSelectedTasks(new Set());
+      setBulkActionMode(false);
+    }
+  });
+
+  const bulkDeleteTasksMutation = useMutation({
+    mutationFn: async (taskIds: string[]) => {
+      const response = await apiRequest('DELETE', '/api/tasks/bulk-delete', { taskIds });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to bulk delete tasks');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      setSelectedTasks(new Set());
+      setBulkActionMode(false);
+    }
+  });
+
+  const moveTasksToTodoListMutation = useMutation({
+    mutationFn: async ({ taskIds, targetTodoListId }: { taskIds: string[]; targetTodoListId: string }) => {
+      const response = await apiRequest('PATCH', '/api/tasks/move-to-todolist', { taskIds, targetTodoListId });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to move tasks');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      setSelectedTasks(new Set());
+      setBulkActionMode(false);
+    }
+  });
+
   // TodoList Modal Functions
   const openTodoListModal = (todoList: TodoList) => {
     setSelectedTodoList(todoList);
@@ -787,6 +912,10 @@ export default function Canvas() {
     setSectionInputs({});
     setGeneralTaskInput('');
     setNewSectionName('');
+    setSelectedTasks(new Set());
+    setBulkActionMode(false);
+    setEditingTodoListId(null);
+    setEditingTodoListTitle('');
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -916,6 +1045,90 @@ export default function Canvas() {
   const cancelSectionEdit = () => {
     setEditingSectionId(null);
     setEditingSectionTitle('');
+  };
+
+  // TodoList management functions
+  const startEditingTodoList = (todoList: TodoList) => {
+    setEditingTodoListId(todoList.id);
+    setEditingTodoListTitle(todoList.name);
+  };
+
+  const saveTodoListEdit = () => {
+    if (!editingTodoListId || !editingTodoListTitle.trim()) return;
+    
+    updateTodoListMutation.mutate({
+      id: editingTodoListId,
+      updates: { name: editingTodoListTitle.trim() }
+    });
+  };
+
+  const cancelTodoListEdit = () => {
+    setEditingTodoListId(null);
+    setEditingTodoListTitle('');
+  };
+
+  const confirmDeleteTodoList = (todoList: TodoList) => {
+    setTodoListToDelete(todoList);
+    setDeleteTodoListConfirmOpen(true);
+  };
+
+  const executeTodoListDeletion = () => {
+    if (!todoListToDelete) return;
+    deleteTodoListMutation.mutate(todoListToDelete.id);
+  };
+
+  // Bulk task operations functions
+  const toggleTaskSelection = (taskId: string) => {
+    setSelectedTasks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllTasks = () => {
+    const allTaskIds = todoListTasks.map(task => task.id);
+    setSelectedTasks(new Set(allTaskIds));
+  };
+
+  const clearTaskSelection = () => {
+    setSelectedTasks(new Set());
+    setBulkActionMode(false);
+  };
+
+  const toggleBulkActionMode = () => {
+    setBulkActionMode(!bulkActionMode);
+    setSelectedTasks(new Set());
+  };
+
+  const bulkMarkComplete = (completed: boolean) => {
+    if (selectedTasks.size === 0) return;
+    
+    bulkUpdateTasksMutation.mutate({
+      taskIds: Array.from(selectedTasks),
+      updates: { completed }
+    });
+  };
+
+  const bulkDeleteTasks = () => {
+    if (selectedTasks.size === 0) return;
+    
+    if (confirm(`Delete ${selectedTasks.size} selected tasks? This action cannot be undone.`)) {
+      bulkDeleteTasksMutation.mutate(Array.from(selectedTasks));
+    }
+  };
+
+  const bulkMoveToSection = (sectionId: string | null) => {
+    if (selectedTasks.size === 0) return;
+    
+    bulkUpdateTasksMutation.mutate({
+      taskIds: Array.from(selectedTasks),
+      updates: { sectionId }
+    });
   };
 
   const addNewTask = (sectionId?: string) => {

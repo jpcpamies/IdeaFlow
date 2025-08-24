@@ -70,7 +70,9 @@ export const todoLists = pgTable("todolists", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
   groupId: varchar("group_id").notNull().references(() => groups.id, { onDelete: 'cascade' }),
   name: varchar("name", { length: 100 }).notNull(),
+  archived: boolean("archived").default(false),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 // Sections table - organize tasks within TodoLists
