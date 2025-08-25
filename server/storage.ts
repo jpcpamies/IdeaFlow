@@ -76,11 +76,6 @@ export interface IStorage {
   getTodoListTasks(todoListId: string): Promise<Task[]>;
   toggleTask(id: string, completed: boolean, userId: string): Promise<Task>;
   updateTaskOrder(id: string, orderIndex: number, sectionId?: string | null): Promise<Task>;
-  clearCompletedTasks(todoListId: string, userId: string): Promise<void>;
-  
-  // Hidden task recovery operations
-  getHiddenTasksCount(todoListId: string): Promise<number>;
-  restoreHiddenTasks(todoListId: string, userId: string): Promise<number>;
   
   // Progress tracking operations
   getTodoListProgress(todoListId: string): Promise<{ total: number; completed: number; percentage: number }>;
@@ -479,10 +474,7 @@ export class DatabaseStorage implements IStorage {
     return await db
       .select()
       .from(tasks)
-      .where(and(
-        eq(tasks.todoListId, todoListId),
-        eq(tasks.hidden, false)
-      ))
+      .where(eq(tasks.todoListId, todoListId))
       .orderBy(tasks.orderIndex, tasks.createdAt);
   }
   
@@ -509,40 +501,6 @@ export class DatabaseStorage implements IStorage {
     return updatedTask;
   }
 
-  async clearCompletedTasks(todoListId: string, userId: string): Promise<void> {
-    await db
-      .update(tasks)
-      .set({ hidden: true })
-      .where(and(
-        eq(tasks.todoListId, todoListId),
-        eq(tasks.completed, true),
-        eq(tasks.hidden, false)
-      ));
-  }
-
-  // Hidden task recovery operations
-  async getHiddenTasksCount(todoListId: string): Promise<number> {
-    const result = await db
-      .select({ count: count() })
-      .from(tasks)
-      .where(and(
-        eq(tasks.todoListId, todoListId),
-        eq(tasks.hidden, true)
-      ));
-    return result[0]?.count || 0;
-  }
-
-  async restoreHiddenTasks(todoListId: string, userId: string): Promise<number> {
-    const result = await db
-      .update(tasks)
-      .set({ hidden: false })
-      .where(and(
-        eq(tasks.todoListId, todoListId),
-        eq(tasks.hidden, true)
-      ))
-      .returning({ id: tasks.id });
-    return result.length;
-  }
 
   // Progress tracking operations
   async getTodoListProgress(todoListId: string): Promise<{ total: number; completed: number; percentage: number }> {
@@ -551,10 +509,7 @@ export class DatabaseStorage implements IStorage {
         completed: tasks.completed
       })
       .from(tasks)
-      .where(and(
-        eq(tasks.todoListId, todoListId),
-        eq(tasks.hidden, false)
-      ));
+      .where(eq(tasks.todoListId, todoListId));
 
     const total = allTasks.length;
     const completed = allTasks.filter(task => task.completed).length;

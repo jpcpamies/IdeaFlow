@@ -1075,63 +1075,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/todolists/:id/completed-tasks", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      const { id } = req.params;
-      
-      // Verify user owns the todolist
-      const todoList = await storage.getTodoList(id);
-      if (!todoList || todoList.userId !== userId) {
-        return res.status(404).json({ message: "TodoList not found" });
-      }
-      
-      await storage.clearCompletedTasks(id, userId);
-      res.json({ message: "Completed tasks cleared successfully" });
-    } catch (error) {
-      console.error("Error clearing completed tasks:", error);
-      res.status(500).json({ message: "Failed to clear completed tasks" });
-    }
-  });
-
-  // Hidden task recovery routes
-  app.get("/api/todolists/:id/hidden-tasks-count", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      const { id } = req.params;
-      
-      // Verify user owns the todolist
-      const todoList = await storage.getTodoList(id);
-      if (!todoList || todoList.userId !== userId) {
-        return res.status(404).json({ message: "TodoList not found" });
-      }
-      
-      const count = await storage.getHiddenTasksCount(id);
-      res.json({ count });
-    } catch (error) {
-      console.error("Error getting hidden tasks count:", error);
-      res.status(500).json({ message: "Failed to get hidden tasks count" });
-    }
-  });
-
-  app.post("/api/todolists/:id/restore-hidden-tasks", isAuthenticated, async (req: any, res) => {
-    try {
-      const userId = req.user?.claims?.sub;
-      const { id } = req.params;
-      
-      // Verify user owns the todolist
-      const todoList = await storage.getTodoList(id);
-      if (!todoList || todoList.userId !== userId) {
-        return res.status(404).json({ message: "TodoList not found" });
-      }
-      
-      const restoredCount = await storage.restoreHiddenTasks(id, userId);
-      res.json({ message: `${restoredCount} tasks restored successfully`, restoredCount });
-    } catch (error) {
-      console.error("Error restoring hidden tasks:", error);
-      res.status(500).json({ message: "Failed to restore hidden tasks" });
-    }
-  });
 
   // Progress tracking route
   app.get("/api/todolists/:id/progress", isAuthenticated, async (req: any, res) => {

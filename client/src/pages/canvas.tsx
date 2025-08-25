@@ -562,21 +562,6 @@ export default function Canvas() {
     enabled: todoLists.length > 0,
   });
 
-  // Hidden tasks count for each TodoList
-  const { data: hiddenTasksCounts = {} } = useQuery({
-    queryKey: ['/api/todolists/hidden-counts'],
-    queryFn: async () => {
-      const countPromises = todoLists.map(async (todoList: TodoList) => {
-        const response = await apiRequest('GET', `/api/todolists/${todoList.id}/hidden-tasks-count`);
-        if (!response.ok) return [todoList.id, 0];
-        const { count } = await response.json();
-        return [todoList.id, count];
-      });
-      const results = await Promise.all(countPromises);
-      return Object.fromEntries(results);
-    },
-    enabled: todoLists.length > 0,
-  });
 
   // Fetch sections for selected TodoList
   const { data: todoListSections = [] } = useQuery({
@@ -1149,7 +1134,6 @@ export default function Canvas() {
       console.log('Task toggled successfully:', updatedTask);
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists/progress'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists/hidden-counts'] });
       if (selectedTodoList) {
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
       }
@@ -1856,23 +1840,6 @@ export default function Canvas() {
     }
   });
 
-  const clearCompletedTasksMutation = useMutation({
-    mutationFn: async (todoListId: string) => {
-      const response = await apiRequest('DELETE', `/api/todolists/${todoListId}/completed-tasks`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to clear completed tasks');
-      }
-      return response.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
-      // Also invalidate ideas since completed tasks with linked ideas will be deleted
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-    }
-  });
 
   // Drag and Drop Sensors for TodoList Modal
   const sensors = useSensors(
@@ -1998,27 +1965,6 @@ export default function Canvas() {
     }
   });
 
-  // Hidden task recovery mutation
-  const restoreHiddenTasksMutation = useMutation({
-    mutationFn: async (todoListId: string) => {
-      const response = await apiRequest('POST', `/api/todolists/${todoListId}/restore-hidden-tasks`);
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to restore hidden tasks');
-      }
-      return response.json();
-    },
-    onSuccess: (data, todoListId) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists/progress'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists/hidden-counts'] });
-      
-      // Show confirmation message
-      if (data.restoredCount > 0) {
-        console.log(`${data.restoredCount} tasks restored successfully`);
-      }
-    },
-  });
 
   // Bulk task operations mutations
   const bulkUpdateTasksMutation = useMutation({
@@ -2088,6 +2034,8 @@ export default function Canvas() {
     setIsTodoListModalOpen(true);
     // Preserve global priority filter when opening modal
     setPriorityFilter(globalPriorityFilter);
+    // Reset completed tasks visibility to default (show completed)
+    setShowCompletedTasks(true);
   };
 
   const closeTodoListModal = () => {
@@ -2905,11 +2853,11 @@ export default function Canvas() {
           </div>
         ) : (
           <>
-            <div className="flex-1">
+            <div className={`flex-1 ${task.completed ? 'opacity-60' : ''}`}>
               <div
                 className={`cursor-pointer ${
                   task.completed 
-                    ? 'line-through text-gray-500' 
+                    ? 'line-through text-gray-400' 
                     : 'text-gray-900'
                 }`}
                 onClick={() => toggleTaskExpansion(task)}
@@ -5357,14 +5305,6 @@ export default function Canvas() {
                         <Edit className="w-4 h-4 mr-2" />
                         Edit Title
                       </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => selectedTodoList && clearCompletedTasksMutation.mutate(selectedTodoList.id)}
-                        disabled={!todoListTasks.some(task => task.completed)}
-                        data-testid="button-clear-completed"
-                      >
-                        <Trash2 className="w-4 h-4 mr-2" />
-                        Clear Completed
-                      </DropdownMenuItem>
                       {todoListTasks.some(task => task.completed) && (
                         <DropdownMenuItem
                           onClick={() => setShowCompletedTasks(!showCompletedTasks)}
@@ -5383,21 +5323,6 @@ export default function Canvas() {
                           )}
                         </DropdownMenuItem>
                       )}
-                      {(() => {
-                        const hiddenCount = hiddenTasksCounts[selectedTodoList?.id || ''] || 0;
-                        if (hiddenCount > 0) {
-                          return (
-                            <DropdownMenuItem
-                              onClick={() => selectedTodoList && restoreHiddenTasksMutation.mutate(selectedTodoList.id)}
-                              data-testid="button-restore-hidden-tasks"
-                            >
-                              <Undo className="w-4 h-4 mr-2" />
-                              Show Hidden Tasks ({hiddenCount})
-                            </DropdownMenuItem>
-                          );
-                        }
-                        return null;
-                      })()}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </>
