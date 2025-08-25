@@ -2257,7 +2257,7 @@ export default function Canvas() {
               
               {/* Expandable description area */}
               {expandedTaskId === task.id && task.ideaId && (
-                <div className="mt-2 p-2 bg-gray-50 rounded text-sm text-gray-600 border-l-2 border-blue-200">
+                <div className="mt-2 rounded text-sm text-gray-600">
                   {(() => {
                     const linkedIdea = ideas.find(idea => idea.id === task.ideaId);
                     return linkedIdea?.description || "No description available";
