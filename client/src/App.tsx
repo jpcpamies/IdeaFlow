@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import Landing from "@/pages/landing";
 import Dashboard from "@/pages/dashboard";
 import Canvas from "@/pages/canvas";
+import Auth from "@/pages/auth";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -15,12 +16,16 @@ function Router() {
   return (
     <Switch>
       {isLoading || !isAuthenticated ? (
-        <Route path="/" component={Landing} />
+        <>
+          <Route path="/" component={Landing} />
+          <Route path="/auth" component={Auth} />
+        </>
       ) : (
         <>
           <Route path="/" component={Dashboard} />
           <Route path="/canvas/:projectId" component={Canvas} />
           <Route path="/canvas" component={Canvas} />
+          <Route path="/auth" component={Auth} />
         </>
       )}
       <Route component={NotFound} />

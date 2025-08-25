@@ -4,11 +4,11 @@ import { Palette, Wand2, Users, ArrowRight, Play } from "lucide-react";
 
 export default function Landing() {
   const handleGetStarted = () => {
-    window.location.href = "/api/login";
+    window.location.href = "/auth";
   };
 
   const handleSignIn = () => {
-    window.location.href = "/api/login";
+    window.location.href = "/auth";
   };
 
   return (

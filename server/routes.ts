@@ -4,6 +4,8 @@ import { storage } from "./storage";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import { insertProjectSchema, insertTaskSchema, insertIdeaSchema, insertGroupSchema, insertTodoListSchema, insertSectionSchema } from "@shared/schema";
 import { z } from "zod";
+import bcrypt from "bcryptjs";
+import passport from "passport";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware
@@ -12,8 +14,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Auth routes
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
-      const user = await storage.getUser(userId);
+      let user;
+      if (req.user.claims) {
+        // Replit auth user
+        const userId = req.user.claims ? req.user.claims.sub : req.user.id;
+        user = await storage.getUser(userId);
+      } else {
+        // Local auth user
+        user = req.user;
+      }
       res.json(user);
     } catch (error) {
       console.error("Error fetching user:", error);
@@ -21,10 +30,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Email/Password Registration
+  app.post('/api/auth/register', async (req, res) => {
+    try {
+      const { email, password, firstName, lastName } = req.body;
+      
+      // Check if user already exists
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "User already exists with this email" });
+      }
+
+      // Hash password
+      const passwordHash = await bcrypt.hash(password, 10);
+
+      // Create user
+      const user = await storage.createUser({
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        authProvider: 'local'
+      });
+
+      // Log in the user
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Registration successful but login failed" });
+        }
+        res.json({ message: "Registration successful", user });
+      });
+    } catch (error) {
+      console.error("Registration error:", error);
+      res.status(500).json({ message: "Registration failed" });
+    }
+  });
+
+  // Email/Password Login
+  app.post('/api/auth/login', (req, res, next) => {
+    passport.authenticate('local', (err: any, user: any, info: any) => {
+      if (err) {
+        return res.status(500).json({ message: "Login failed" });
+      }
+      if (!user) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      
+      req.login(user, (err) => {
+        if (err) {
+          return res.status(500).json({ message: "Login failed" });
+        }
+        res.json({ message: "Login successful", user });
+      });
+    })(req, res, next);
+  });
+
   // Project routes
   app.get('/api/projects', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const projects = await storage.getUserProjects(userId);
       res.json(projects);
     } catch (error) {
@@ -41,7 +105,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user owns the project
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       if (project.userId !== userId) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -55,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/projects', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const projectData = insertProjectSchema.parse({ ...req.body, userId });
       const project = await storage.createProject(projectData);
       res.json(project);
@@ -70,7 +134,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/projects/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const project = await storage.getProject(req.params.id);
       
       if (!project || project.userId !== userId) {
@@ -92,7 +156,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // PUT route (same as PATCH for project updates)
   app.put('/api/projects/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const project = await storage.getProject(req.params.id);
       
       if (!project || project.userId !== userId) {
@@ -113,7 +177,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/projects/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const project = await storage.getProject(req.params.id);
       
       if (!project || project.userId !== userId) {
@@ -131,7 +195,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Task routes
   app.get('/api/projects/:projectId/tasks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const project = await storage.getProject(req.params.projectId);
       
       if (!project || project.userId !== userId) {
@@ -148,7 +212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/projects/:projectId/tasks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const project = await storage.getProject(req.params.projectId);
       
       if (!project || project.userId !== userId) {
@@ -197,7 +261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/tasks/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       
       // Get task details before deletion for bi-directional sync
       const task = await storage.getTask(req.params.id);
@@ -242,7 +306,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Idea routes
   app.get('/api/ideas', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const projectId = req.query.projectId;
       if (!projectId) {
         return res.status(400).json({ message: "Project ID is required" });
@@ -265,7 +329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Check if user owns the idea
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       if (idea.userId !== userId) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -279,7 +343,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/ideas', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       
       if (!req.body.projectId) {
         return res.status(400).json({ message: "Project ID is required" });
@@ -306,7 +370,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/ideas/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const idea = await storage.getIdea(req.params.id);
       
       if (!idea || idea.userId !== userId) {
@@ -328,7 +392,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (isGroupChanging) {
         // Use the same approach as the bulk reassign endpoint for consistency
-        const migrationResult = await storage.moveTasksToGroup([req.params.id], newGroupId);
+        const migrationResult = await storage.moveTasksToGroup([req.params.id], newGroupId!);
         
         // Update the idea's groupId
         const updatedIdea = await storage.updateIdea(req.params.id, { ...updates, groupId: newGroupId });
@@ -363,7 +427,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Migrate tasks to a different group (for group reassignments)  
   app.patch('/api/groups/:id/migrate-tasks', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const targetGroupId = req.params.id;
       const { ideaIds } = req.body;
       
@@ -406,7 +470,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // New endpoint for atomic idea group reassignment
   app.patch('/api/ideas/:id/reassign-group', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const ideaId = req.params.id;
       const { groupId: newGroupId } = req.body;
       
@@ -457,13 +521,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
     } catch (error) {
       console.error("Error reassigning idea group:", error);
-      res.status(500).json({ message: "Failed to reassign idea group", error: error.message });
+      res.status(500).json({ message: "Failed to reassign idea group", error: error instanceof Error ? error.message : "Unknown error" });
     }
   });
 
   app.delete('/api/ideas/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const idea = await storage.getIdea(req.params.id);
       
       if (!idea || idea.userId !== userId) {
@@ -553,6 +617,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             todoListId: todoList.id,
             ideaId: idea.id,
             title: idea.title,
+            priority: 0,
             completed: false,
             orderIndex: i,
           });
@@ -659,6 +724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           todoListId: duplicatedTodoList.id,
           sectionId: task.sectionId ? sectionMapping[task.sectionId] : null,
           title: task.title,
+          priority: task.priority || 0,
           completed: false, // Reset completion status for duplicated tasks
           orderIndex: task.orderIndex,
         });
@@ -711,6 +777,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             todoListId: id,
             ideaId: idea.id,
             title: idea.title,
+            priority: 0,
             completed: false,
             orderIndex: maxOrder + 1 + addedCount,
           });
@@ -1119,7 +1186,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Group routes
   app.get('/api/groups', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const projectId = req.query.projectId;
       
       if (!projectId) {
@@ -1136,7 +1203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/groups', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       
       if (!req.body.projectId) {
         return res.status(400).json({ message: "Project ID is required" });
@@ -1156,7 +1223,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.patch('/api/groups/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const group = await storage.getGroup(req.params.id);
       
       if (!group || group.userId !== userId) {
@@ -1177,7 +1244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/groups/:id', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const group = await storage.getGroup(req.params.id);
       
       if (!group || group.userId !== userId) {
@@ -1197,7 +1264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Stats route
   app.get('/api/stats', isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = req.user.claims ? req.user.claims.sub : req.user.id;
       const stats = await storage.getUserStats(userId);
       res.json(stats);
     } catch (error) {

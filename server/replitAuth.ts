@@ -2,10 +2,12 @@ import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
 import passport from "passport";
+import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
+import bcrypt from "bcryptjs";
 import { storage } from "./storage";
 
 if (!process.env.REPLIT_DOMAINS) {
@@ -98,8 +100,57 @@ export async function setupAuth(app: Express) {
     passport.use(strategy);
   }
 
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
-  passport.deserializeUser((user: Express.User, cb) => cb(null, user));
+  // Local Strategy for email/password authentication
+  passport.use(new LocalStrategy({
+    usernameField: 'email',
+    passwordField: 'password'
+  }, async (email, password, done) => {
+    try {
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.passwordHash) {
+        return done(null, false);
+      }
+
+      const isValidPassword = await bcrypt.compare(password, user.passwordHash);
+      if (!isValidPassword) {
+        return done(null, false);
+      }
+
+      return done(null, user);
+    } catch (error) {
+      return done(error);
+    }
+  }));
+
+  // Serialize user for sessions - handle both Replit auth and local auth
+  passport.serializeUser((user: any, cb) => {
+    if (user.claims) {
+      // Replit auth user - serialize the whole user object
+      cb(null, { type: 'replit', user });
+    } else {
+      // Local auth user - serialize just the ID
+      cb(null, { type: 'local', userId: user.id });
+    }
+  });
+
+  passport.deserializeUser(async (data: any, cb) => {
+    try {
+      if (data.type === 'replit') {
+        // Replit auth user - return the stored user object
+        cb(null, data.user);
+      } else {
+        // Local auth user - fetch from database
+        const user = await storage.getUser(data.userId);
+        if (!user) {
+          return cb(null, false); // User not found, clear session
+        }
+        cb(null, user);
+      }
+    } catch (error) {
+      console.error("Error deserializing user:", error);
+      cb(null, false); // Don't crash, just clear the session
+    }
+  });
 
   app.get("/api/login", (req, res, next) => {
     passport.authenticate(`replitauth:${req.hostname}`, {
@@ -128,9 +179,19 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  const user = req.user as any;
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
 
-  if (!req.isAuthenticated() || !user.expires_at) {
+  const user = req.user as any;
+  
+  // Handle local auth users (email/password)
+  if (!user.claims) {
+    return next(); // Local auth user, no token refresh needed
+  }
+
+  // Handle Replit auth users (token refresh logic)
+  if (!user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
 
