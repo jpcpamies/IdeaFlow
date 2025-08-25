@@ -95,6 +95,7 @@ export const tasks = pgTable("tasks", {
   ideaId: varchar("idea_id").references(() => ideas.id, { onDelete: 'set null' }),
   title: varchar("title").notNull(),
   completed: boolean("completed").default(false),
+  priority: integer("priority").default(3), // 1=High, 2=Medium, 3=Low
   orderIndex: integer("order_index").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -236,6 +237,9 @@ export const insertSectionSchema = createInsertSchema(sections).omit({
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true,
   createdAt: true,
+}).extend({
+  // Validate priority values: 1=High, 2=Medium, 3=Low
+  priority: z.number().int().min(1).max(3).default(3),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({

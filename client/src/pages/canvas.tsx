@@ -1186,6 +1186,14 @@ export default function Canvas() {
     }
   });
 
+  // Task priority update handler
+  const handleTaskPriorityChange = (taskId: string, priority: number) => {
+    updateTaskMutation.mutate({
+      id: taskId,
+      updates: { priority }
+    });
+  };
+
   const reorderTaskMutation = useMutation({
     mutationFn: async ({ id, orderIndex, sectionId }: { id: string; orderIndex: number; sectionId?: string | null }) => {
       const response = await apiRequest('PATCH', `/api/tasks/${id}/reorder`, { orderIndex, sectionId });
@@ -2298,6 +2306,29 @@ export default function Canvas() {
                   })()}
                 </div>
               )}
+            </div>
+            
+            {/* Priority Dropdown */}
+            <div className="opacity-75 group-hover:opacity-100 transition-opacity">
+              <Select 
+                value={String(task.priority || 3)} 
+                onValueChange={(value) => handleTaskPriorityChange(task.id, parseInt(value))}
+              >
+                <SelectTrigger className="w-20 h-6 text-xs border-0 bg-transparent hover:bg-gray-50">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1" className="text-red-600 text-xs">
+                    High
+                  </SelectItem>
+                  <SelectItem value="2" className="text-yellow-600 text-xs">
+                    Medium
+                  </SelectItem>
+                  <SelectItem value="3" className="text-green-600 text-xs">
+                    Low
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             
             {/* Three-dot menu */}

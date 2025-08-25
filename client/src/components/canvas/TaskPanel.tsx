@@ -20,6 +20,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Task } from "@shared/schema";
 
 interface TaskPanelProps {
@@ -28,6 +35,7 @@ interface TaskPanelProps {
   tasks: Task[];
   isLoading?: boolean;
   onTaskToggle: (taskId: string, completed: boolean) => void;
+  onTaskPriorityChange: (taskId: string, priority: number) => void;
   onAddTask: () => void;
   onConvertToTasks?: () => void;
   onDeleteTask?: (taskId: string) => void;
@@ -41,6 +49,7 @@ export default function TaskPanel({
   tasks,
   isLoading = false,
   onTaskToggle,
+  onTaskPriorityChange,
   onAddTask,
   onConvertToTasks,
   onDeleteTask,
@@ -58,6 +67,18 @@ export default function TaskPanel({
     return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100 text-xs">Pending</Badge>;
   };
 
+  const getPriorityInfo = (priority: number = 3) => {
+    switch (priority) {
+      case 1:
+        return { label: "High", color: "text-red-600" };
+      case 2:
+        return { label: "Medium", color: "text-yellow-600" };
+      case 3:
+      default:
+        return { label: "Low", color: "text-green-600" };
+    }
+  };
+
   const filteredTasks = tasks.filter(task => {
     if (filter === 'pending') return !task.completed;
     if (filter === 'completed') return task.completed;
@@ -66,6 +87,9 @@ export default function TaskPanel({
 
   const sortedTasks = [...filteredTasks].sort((a, b) => {
     switch (sortBy) {
+      case 'priority':
+        // Priority: 1=High (sort first), 2=Medium, 3=Low (sort last)
+        return (a.priority || 3) - (b.priority || 3);
       case 'status':
         return Number(a.completed) - Number(b.completed);
       default:
@@ -144,6 +168,9 @@ export default function TaskPanel({
               <DropdownMenuItem onClick={() => setSortBy('created')}>
                 By Date Created
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setSortBy('priority')}>
+                By Priority
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSortBy('status')}>
                 By Status
               </DropdownMenuItem>
@@ -201,33 +228,57 @@ export default function TaskPanel({
                             {task.title}
                           </p>
                         </div>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="h-6 w-6 p-0"
-                              data-testid={`button-task-menu-${task.id}`}
-                            >
-                              <MoreVertical className="w-3 h-3" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            {onEditTask && (
-                              <DropdownMenuItem onClick={() => onEditTask(task.id)}>
-                                Edit Task
-                              </DropdownMenuItem>
-                            )}
-                            {onDeleteTask && (
-                              <DropdownMenuItem 
-                                onClick={() => onDeleteTask(task.id)}
-                                className="text-red-600"
+                        
+                        {/* Priority Dropdown */}
+                        <div className="flex items-center space-x-2">
+                          <Select 
+                            value={String(task.priority || 3)} 
+                            onValueChange={(value) => onTaskPriorityChange(task.id, parseInt(value))}
+                          >
+                            <SelectTrigger className="w-20 h-6 text-xs border-0 bg-transparent hover:bg-gray-50">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="1" className="text-red-600 text-xs">
+                                High
+                              </SelectItem>
+                              <SelectItem value="2" className="text-yellow-600 text-xs">
+                                Medium
+                              </SelectItem>
+                              <SelectItem value="3" className="text-green-600 text-xs">
+                                Low
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-6 w-6 p-0"
+                                data-testid={`button-task-menu-${task.id}`}
                               >
-                                Delete Task
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                                <MoreVertical className="w-3 h-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                              {onEditTask && (
+                                <DropdownMenuItem onClick={() => onEditTask(task.id)}>
+                                  Edit Task
+                                </DropdownMenuItem>
+                              )}
+                              {onDeleteTask && (
+                                <DropdownMenuItem 
+                                  onClick={() => onDeleteTask(task.id)}
+                                  className="text-red-600"
+                                >
+                                  Delete Task
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
                       </div>
                       <div className="flex items-center space-x-2 mt-2">
                         {getStatusBadge(task)}
