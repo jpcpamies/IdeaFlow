@@ -3717,29 +3717,42 @@ export default function Canvas() {
               const isSelected = selectedCards.includes(idea.id);
               const group = groups.find((g: Group) => g.id === idea.groupId);
               const cardColor = group ? group.color : idea.color;
+              const isUngrouped = !group;
               
               return (
                 <Card 
                   key={idea.id}
                   data-card-id={idea.id}
                   data-idea-id={idea.id}
-                  className={`absolute w-64 shadow-md hover:shadow-lg transition-all duration-200 ease-out cursor-pointer ${
+                  className={`absolute w-64 transition-all duration-200 ease-out cursor-pointer ${
                     isSelected 
                       ? 'border-4 border-blue-500 shadow-lg shadow-blue-500/30' 
-                      : 'border-2 border-gray-200 hover:border-gray-300'
+                      : isUngrouped
+                        ? 'border border-gray-200 hover:border-gray-300'
+                        : 'border-2 border-gray-200 hover:border-gray-300'
+                  } ${
+                    isUngrouped ? 'shadow-sm hover:shadow-md' : 'shadow-md hover:shadow-lg'
                   }`}
                   style={{
                     left: Math.round(idea.canvasX),
                     top: Math.round(idea.canvasY),
-                    backgroundColor: cardColor,
+                    backgroundColor: isUngrouped ? '#FFFFFF' : cardColor,
+                    borderRadius: '8px',
                     cursor: dragState.isDragging ? 'grabbing' : 'pointer',
                     transition: isSelected 
                       ? 'all 0.2s ease-out, box-shadow 0.15s ease-out, border 0.1s ease-out' 
                       : 'all 0.2s ease-out, border 0.15s ease-out, box-shadow 0.1s ease-out',
                     transform: isSelected && !dragState.isDragging ? 'scale(1.02)' : 'scale(1)',
                     zIndex: isSelected ? 10 : 1,
-                    ...(isSelected && {
-                      boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.4), 0 12px 20px -5px rgba(0, 0, 0, 0.15), 0 0 15px rgba(59, 130, 246, 0.2)'
+                    boxShadow: isSelected 
+                      ? '0 0 0 3px rgba(59, 130, 246, 0.4), 0 12px 20px -5px rgba(0, 0, 0, 0.15), 0 0 15px rgba(59, 130, 246, 0.2)'
+                      : isUngrouped 
+                        ? '0 2px 6px rgba(0, 0, 0, 0.1)'
+                        : undefined,
+                    ...(isUngrouped && {
+                      backgroundImage: 'radial-gradient(circle, #E2E8F0 2px, transparent 2px)',
+                      backgroundSize: '20px 20px',
+                      backgroundPosition: '0 0'
                     })
                   }}
                   onClick={(e) => handleCardClick(idea.id, e)}
@@ -3747,7 +3760,7 @@ export default function Canvas() {
                   onTouchStart={(e) => handleTouchStart(e, idea.id)}
                   data-testid={`idea-card-${idea.id}`}
                 >
-                  <CardContent className="p-4 relative">
+                  <CardContent className="relative" style={{ padding: '16px' }}>
                     {/* Three-dot menu - only show when no multi-selection */}
                     {!hasMultiSelection && (
                       <DropdownMenu>
@@ -3785,10 +3798,28 @@ export default function Canvas() {
                       </DropdownMenu>
                     )}
 
-                    <h3 className="font-semibold text-gray-900 mb-2 text-sm pr-8">
+                    <h3 className={`mb-2 pr-8 ${
+                      isUngrouped 
+                        ? 'text-base font-semibold' 
+                        : 'font-semibold text-sm'
+                    }`} style={{
+                      color: isUngrouped ? '#1E293B' : undefined,
+                      fontFamily: isUngrouped ? 'sans-serif' : undefined,
+                      fontSize: isUngrouped ? '16px' : undefined,
+                      fontWeight: isUngrouped ? '600' : undefined
+                    }}>
                       {idea.title}
                     </h3>
-                    <p className="text-xs text-gray-600 leading-relaxed mb-3">
+                    <p className={`leading-relaxed mb-3 ${
+                      isUngrouped 
+                        ? 'text-sm' 
+                        : 'text-xs text-gray-600'
+                    }`} style={{
+                      color: isUngrouped ? '#475569' : undefined,
+                      fontFamily: isUngrouped ? 'sans-serif' : undefined,
+                      fontSize: isUngrouped ? '14px' : undefined,
+                      fontWeight: isUngrouped ? '400' : undefined
+                    }}>
                       {idea.description}
                     </p>
                     <div className="flex items-center justify-between">
@@ -3800,11 +3831,15 @@ export default function Canvas() {
                           {group.name}
                         </Badge>
                       ) : (
-                        <Badge variant="outline" className="text-xs bg-white/20">
+                        <Badge variant="outline" className={`text-xs ${
+                          isUngrouped ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-white/20'
+                        }`}>
                           Unassigned
                         </Badge>
                       )}
-                      <div className="w-2 h-2 rounded-full bg-white/40"></div>
+                      <div className={`w-2 h-2 rounded-full ${
+                        isUngrouped ? 'bg-gray-300' : 'bg-white/40'
+                      }`}></div>
                     </div>
                   </CardContent>
                 </Card>
