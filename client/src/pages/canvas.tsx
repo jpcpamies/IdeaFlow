@@ -4106,6 +4106,14 @@ export default function Canvas() {
               }
 
               return filteredTodoLists.map((todoList: TodoList) => {
+                // Get tasks for this specific TodoList
+                const currentTodoListTasks = allTasks.filter((task: Task) => task.todoListId === todoList.id);
+                
+                // Apply global priority filter to these tasks
+                const displayTasks = globalPriorityFilter === 'all' 
+                  ? currentTodoListTasks
+                  : currentTodoListTasks.filter(task => (task.priority || 3) === parseInt(globalPriorityFilter));
+                
                 const taskCounts = getFilteredTaskCounts(todoList.id, allTasks);
                 const completedCount = taskCounts.completed;
                 const totalCount = taskCounts.total;
@@ -4128,12 +4136,12 @@ export default function Canvas() {
                     </div>
                     
                     <div className="space-y-2">
-                      {todoListTasks.length === 0 ? (
+                      {displayTasks.length === 0 ? (
                         <div className="text-center py-2">
                           <p className="text-xs text-gray-500">No tasks</p>
                         </div>
                       ) : (
-                        todoListTasks.map((task: Task) => (
+                        displayTasks.map((task: Task) => (
                           <div 
                             key={task.id} 
                             className="flex items-start space-x-2 group"
