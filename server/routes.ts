@@ -326,23 +326,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const newGroupId = updates.groupId !== undefined ? updates.groupId : oldGroupId;
       const isGroupChanging = oldGroupId !== newGroupId;
       
-      // Update the idea (database triggers will automatically handle task synchronization)
-      const updatedIdea = await storage.updateIdea(req.params.id, updates);
-      
-      // Include migration info in response for consistency with bulk operations
       if (isGroupChanging) {
-        console.log(`Group changed for idea ${req.params.id}: ${oldGroupId} → ${newGroupId}. Database triggers will handle task migration.`);
+        // Use the same approach as the bulk reassign endpoint for consistency
+        const migrationResult = await storage.moveTasksToGroup([req.params.id], newGroupId);
+        
+        // Update the idea's groupId
+        const updatedIdea = await storage.updateIdea(req.params.id, { ...updates, groupId: newGroupId });
+        
+        console.log(`Individual idea group change: ${oldGroupId} → ${newGroupId}. Moved ${migrationResult.moved} tasks.`);
+        
         res.json({
           ...updatedIdea,
           _migration: {
             fromGroupId: oldGroupId,
             toGroupId: newGroupId,
-            handledBy: "database_triggers",
-            message: "Task synchronization handled automatically by database triggers"
+            tasksMoved: migrationResult.moved,
+            handledBy: "moveTasksToGroup_api",
+            message: `Successfully moved ${migrationResult.moved} tasks to new group`
           }
         });
       } else {
-        // No group change, just return updated idea
+        // No group change, update normally
+        const updatedIdea = await storage.updateIdea(req.params.id, updates);
         res.json(updatedIdea);
       }
       
