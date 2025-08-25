@@ -1133,9 +1133,10 @@ export default function Canvas() {
     onSuccess: (updatedTask) => {
       console.log('Task toggled successfully:', updatedTask);
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists/progress'] });
       if (selectedTodoList) {
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
+        // Invalidate progress calculation after task completion toggle
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
       }
     },
     onError: (error) => {
@@ -1827,6 +1828,11 @@ export default function Canvas() {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
       
+      // IMPORTANT: Invalidate progress calculation after task deletion
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
+      
       // If a linked idea was deleted, also invalidate idea queries for canvas sync
       if (deletedIdeaId) {
         queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
@@ -1978,6 +1984,10 @@ export default function Canvas() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      // Invalidate progress calculation after bulk task updates
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
       setSelectedTasks(new Set());
       setBulkActionMode(false);
     }
@@ -1994,6 +2004,10 @@ export default function Canvas() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      // Invalidate progress calculation after bulk task deletion
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
       setSelectedTasks(new Set());
       setBulkActionMode(false);
     }
