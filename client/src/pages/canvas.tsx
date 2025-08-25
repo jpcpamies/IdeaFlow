@@ -1004,18 +1004,24 @@ export default function Canvas() {
       }
       return response.json();
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       console.log('TodoList synced successfully:', result);
       
       // Comprehensive query invalidation to ensure UI updates immediately
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Force refetch of tasks immediately to ensure UI updates
+      await queryClient.refetchQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/ideas'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/groups'] })
+      ]);
       
       // Also invalidate specific todoList tasks if we have the ID
       if (selectedTodoList?.id) {
-        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
+        await queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
       }
       
       // Automatically open the tasks sidebar to show the updated todo list
@@ -2616,11 +2622,17 @@ export default function Canvas() {
       await Promise.all(updatePromises);
       
       // Refresh all related data to update UI - including tasks to fix counter sync issues
+      // Must invalidate in correct dependency order: todolists first, then tasks
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Force refetch of tasks immediately to ensure UI updates
+      await queryClient.refetchQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Then invalidate other related queries
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['/api/ideas'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/groups'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/todolists'] }),
-        queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] })
+        queryClient.invalidateQueries({ queryKey: ['/api/groups'] })
       ]);
       
       setIsAssignGroupModalOpen(false);
@@ -2674,10 +2686,18 @@ export default function Canvas() {
       
       await Promise.all(updatePromises);
       
-      // Refresh all relevant data
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      // Refresh all relevant data in correct dependency order
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Force refetch of tasks immediately to ensure UI updates
+      await queryClient.refetchQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Then invalidate other related queries
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/ideas'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/groups'] })
+      ]);
       
       // Close modals and reset state
       setIsStandaloneGroupModalOpen(false);
