@@ -3699,14 +3699,32 @@ export default function Canvas() {
             }`}
             onMouseDown={handleCanvasPanStart}
             onClick={handleCanvasClick}
-            style={{ 
-              touchAction: 'none',
-              backgroundColor: '#FFFFFF',
-              backgroundImage: 'radial-gradient(circle, #E2E8F0 2px, transparent 2px)',
-              backgroundSize: `${20 / (zoomLevel / 100)}px ${20 / (zoomLevel / 100)}px`,
-              backgroundPosition: '0 0',
-              transition: 'background-size 0.2s ease-out'
-            }}
+            style={(() => {
+              // Dotted background calculations
+              const zoomFactor = zoomLevel / 100;
+              const baseDotRgb = '148, 163, 184';
+              const baseDotOpacity = 0.22;
+              const baseDotSize = 2;
+              const baseSpacing = 20;
+              
+              // Apply formulas with limits
+              const spacingPx = Math.max(10, Math.min(40, baseSpacing * zoomFactor));
+              const dotSizePx = Math.max(1, Math.min(3, baseDotSize * Math.pow(zoomFactor, 0.65)));
+              const opacity = Math.max(0.14, Math.min(0.30, baseDotOpacity * Math.pow(zoomFactor, 0.5)));
+              
+              // Pin grid to world coordinates (prevent sliding during pan)
+              const bgPosX = (-panState.x % spacingPx) / (zoomLevel / 100);
+              const bgPosY = (-panState.y % spacingPx) / (zoomLevel / 100);
+              
+              return {
+                touchAction: 'none',
+                backgroundColor: '#FFFFFF',
+                backgroundImage: `radial-gradient(circle, rgba(${baseDotRgb}, ${opacity}) 0, rgba(${baseDotRgb}, ${opacity}) ${dotSizePx}px, transparent ${dotSizePx}px)`,
+                backgroundSize: `${spacingPx}px ${spacingPx}px`,
+                backgroundPosition: `${bgPosX}px ${bgPosY}px`,
+                transition: 'background-size 150ms ease-out, background-image 150ms ease-out'
+              };
+            })()}
           >
             {/* Inner canvas with pan and zoom transforms */}
             <div
@@ -3800,27 +3818,19 @@ export default function Canvas() {
                       </DropdownMenu>
                     )}
 
-                    <h3 className={`mb-2 pr-8 ${
-                      isUngrouped 
-                        ? 'text-base font-semibold' 
-                        : 'font-semibold text-sm text-white'
+                    <h3 className={`mb-2 pr-8 font-semibold ${
+                      isUngrouped ? 'text-gray-900' : 'text-white'
                     }`} style={{
-                      color: isUngrouped ? '#1E293B' : '#FFFFFF',
-                      fontFamily: isUngrouped ? 'sans-serif' : undefined,
-                      fontSize: isUngrouped ? '16px' : undefined,
-                      fontWeight: isUngrouped ? '600' : undefined
+                      fontSize: '0.875rem', // 14px consistent across all cards
+                      fontWeight: '600'
                     }}>
                       {idea.title}
                     </h3>
                     <p className={`leading-relaxed mb-3 ${
-                      isUngrouped 
-                        ? 'text-sm' 
-                        : 'text-xs text-white'
+                      isUngrouped ? 'text-gray-600' : 'text-white'
                     }`} style={{
-                      color: isUngrouped ? '#475569' : '#FFFFFF',
-                      fontFamily: isUngrouped ? 'sans-serif' : undefined,
-                      fontSize: isUngrouped ? '14px' : undefined,
-                      fontWeight: isUngrouped ? '400' : undefined
+                      fontSize: '0.75rem', // 12px consistent across all cards
+                      fontWeight: '400'
                     }}>
                       {idea.description}
                     </p>
