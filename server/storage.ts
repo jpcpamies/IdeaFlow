@@ -185,8 +185,18 @@ export class DatabaseStorage implements IStorage {
     return result.rowCount || 0;
   }
 
-  async moveTasksToGroup(ideaIds: string[], targetGroupId: string): Promise<number> {
+  async moveTasksToGroup(ideaIds: string[], targetGroupId: string): Promise<{
+    moved: number;
+    errors: string[];
+    details: Array<{ideaId: string; taskCount: number; success: boolean; error?: string}>;
+  }> {
     return await db.transaction(async (tx) => {
+      const result = {
+        moved: 0,
+        errors: [],
+        details: []
+      };
+
       // Find the target group's TodoList (if it exists) within transaction
       const [targetTodoList] = await tx
         .select()
@@ -195,28 +205,73 @@ export class DatabaseStorage implements IStorage {
         .limit(1);
 
       if (!targetTodoList) {
-        // No TodoList exists for target group yet, just return 0
-        // Tasks will be handled when TodoList is created
-        return 0;
+        const error = `No TodoList exists for target group ${targetGroupId}`;
+        result.errors.push(error);
+        console.warn(error);
+        return result;
       }
 
-      // Find all tasks that are linked to the ideas we're moving
-      const tasksToMove = await tx
-        .select()
-        .from(tasks)
-        .where(inArray(tasks.ideaId, ideaIds));
+      // Process each idea individually for better error reporting
+      for (const ideaId of ideaIds) {
+        try {
+          // Find tasks linked to this specific idea
+          const linkedTasks = await tx
+            .select()
+            .from(tasks)
+            .where(eq(tasks.ideaId, ideaId));
 
-      if (tasksToMove.length === 0) {
-        return 0;
+          if (linkedTasks.length === 0) {
+            result.details.push({
+              ideaId,
+              taskCount: 0,
+              success: true
+            });
+            continue;
+          }
+
+          // Check if tasks are already in the correct TodoList
+          const tasksToMove = linkedTasks.filter(task => task.todoListId !== targetTodoList.id);
+          
+          if (tasksToMove.length === 0) {
+            result.details.push({
+              ideaId,
+              taskCount: linkedTasks.length,
+              success: true
+            });
+            continue;
+          }
+
+          // Move tasks to the target TodoList
+          const updateResult = await tx
+            .update(tasks)
+            .set({ todoListId: targetTodoList.id })
+            .where(eq(tasks.ideaId, ideaId));
+
+          const movedCount = updateResult.rowCount || 0;
+          result.moved += movedCount;
+          
+          result.details.push({
+            ideaId,
+            taskCount: movedCount,
+            success: true
+          });
+
+          console.log(`Moved ${movedCount} tasks for idea ${ideaId} to TodoList ${targetTodoList.name}`);
+
+        } catch (error) {
+          const errorMsg = `Failed to move tasks for idea ${ideaId}: ${error}`;
+          result.errors.push(errorMsg);
+          result.details.push({
+            ideaId,
+            taskCount: 0,
+            success: false,
+            error: errorMsg
+          });
+          console.error(errorMsg);
+        }
       }
 
-      // Move tasks to the target TodoList atomically
-      const result = await tx
-        .update(tasks)
-        .set({ todoListId: targetTodoList.id })
-        .where(inArray(tasks.ideaId, ideaIds));
-
-      return result.rowCount || 0;
+      return result;
     });
   }
 

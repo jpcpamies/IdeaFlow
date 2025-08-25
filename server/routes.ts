@@ -357,17 +357,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Move tasks to the target group's TodoList
-      const migratedCount = await storage.moveTasksToGroup(ideaIds, targetGroupId);
+      const migrationResult = await storage.moveTasksToGroup(ideaIds, targetGroupId);
       
       res.json({ 
         message: "Tasks migrated successfully",
         targetGroupId: targetGroupId,
-        migratedTaskCount: migratedCount,
-        ideaIds: ideaIds
+        migratedTaskCount: migrationResult.moved,
+        ideaIds: ideaIds,
+        details: migrationResult.details,
+        errors: migrationResult.errors,
+        success: migrationResult.errors.length === 0
       });
     } catch (error) {
       console.error("Error migrating tasks to group:", error);
       res.status(500).json({ message: "Failed to migrate tasks to group" });
+    }
+  });
+
+  // New endpoint for atomic idea group reassignment
+  app.patch('/api/ideas/:id/reassign-group', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const ideaId = req.params.id;
+      const { groupId: newGroupId } = req.body;
+      
+      if (!newGroupId) {
+        return res.status(400).json({ message: "groupId is required" });
+      }
+      
+      // Verify user owns the idea
+      const idea = await storage.getIdea(ideaId);
+      if (!idea || idea.userId !== userId) {
+        return res.status(404).json({ message: "Idea not found" });
+      }
+      
+      // Verify user owns the target group
+      const targetGroup = await storage.getGroup(newGroupId);
+      if (!targetGroup || targetGroup.userId !== userId) {
+        return res.status(404).json({ message: "Target group not found" });
+      }
+      
+      // If no change, return early
+      if (idea.groupId === newGroupId) {
+        return res.json({
+          message: "No change needed",
+          ideaId,
+          oldGroupId: idea.groupId,
+          newGroupId,
+          tasksMoved: 0
+        });
+      }
+      
+      // Perform atomic reassignment: update idea + move tasks
+      const migrationResult = await storage.moveTasksToGroup([ideaId], newGroupId);
+      
+      // Update the idea's groupId
+      const updatedIdea = await storage.updateIdea(ideaId, { groupId: newGroupId });
+      
+      res.json({
+        message: "Idea reassigned successfully",
+        ideaId,
+        oldGroupId: idea.groupId,
+        newGroupId,
+        tasksMoved: migrationResult.moved,
+        migrationDetails: migrationResult.details,
+        migrationErrors: migrationResult.errors,
+        idea: updatedIdea,
+        success: migrationResult.errors.length === 0
+      });
+      
+    } catch (error) {
+      console.error("Error reassigning idea group:", error);
+      res.status(500).json({ message: "Failed to reassign idea group", error: error.message });
     }
   });
 

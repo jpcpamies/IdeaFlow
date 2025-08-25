@@ -2601,25 +2601,30 @@ export default function Canvas() {
 
   const handleAssignToGroup = async (groupId: string) => {
     try {
-      // IMPORTANT: Move tasks to target group before reassigning ideas
-      // This migrates existing tasks to the target group's TodoList (if it exists)
-      const migrateRes = await apiRequest('PATCH', `/api/groups/${groupId}/migrate-tasks`, {
-        ideaIds: selectedCards
+      console.log(`🔄 Starting atomic reassignment of ${selectedCards.length} ideas to group ${groupId}`);
+      
+      // Use new atomic reassignment endpoint for each idea
+      const reassignmentPromises = selectedCards.map(async (ideaId) => {
+        console.log(`🔄 Reassigning idea ${ideaId} to group ${groupId}`);
+        const response = await apiRequest('PATCH', `/api/ideas/${ideaId}/reassign-group`, {
+          groupId
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to reassign idea ${ideaId}: ${errorData.message}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Successfully reassigned idea ${ideaId}:`, result);
+        return result;
       });
-      if (!migrateRes.ok) {
-        const errorText = await migrateRes.text();
-        throw new Error(`Task migration failed: ${errorText}`);
-      }
       
-      // Update all selected cards
-      const updatePromises = selectedCards.map(cardId => 
-        updateIdeaMutation.mutateAsync({
-          id: cardId,
-          updates: { groupId }
-        })
-      );
+      const results = await Promise.all(reassignmentPromises);
       
-      await Promise.all(updatePromises);
+      // Log summary
+      const totalTasksMoved = results.reduce((sum, result) => sum + (result.tasksMoved || 0), 0);
+      console.log(`🎉 Completed reassignment: ${results.length} ideas, ${totalTasksMoved} tasks moved`);
       
       // Refresh all related data to update UI - including tasks to fix counter sync issues
       // Must invalidate in correct dependency order: todolists first, then tasks
@@ -2638,9 +2643,14 @@ export default function Canvas() {
       setIsAssignGroupModalOpen(false);
       setIsGroupActionsModalOpen(false);
       setSelectedCards([]);
+      
+      // Show success message with details
+      const successMsg = `Successfully reassigned ${results.length} ideas to group. ${totalTasksMoved} tasks were moved to maintain consistency.`;
+      console.log(`✅ ${successMsg}`);
+      
     } catch (error) {
-      console.error('Failed to assign cards to group:', error);
-      alert('Failed to assign cards to group. Please try again.');
+      console.error('❌ Failed to assign cards to group:', error);
+      alert(`Failed to assign cards to group: ${error.message}`);
     }
   };
 
@@ -2667,24 +2677,31 @@ export default function Canvas() {
       
       const newGroup = await groupRes.json();
       
-      // IMPORTANT: Move tasks to target group instead of unlinking them
-      // This migrates existing tasks to the new group's TodoList (if it exists)
-      const migrateRes = await apiRequest('PATCH', `/api/groups/${newGroup.id}/migrate-tasks`, {
-        ideaIds: selectedCards
+      console.log(`🔄 Starting atomic reassignment of ${selectedCards.length} ideas to new group ${newGroup.id}`);
+      
+      // Use atomic reassignment for each idea to the new group
+      const reassignmentPromises = selectedCards.map(async (ideaId) => {
+        console.log(`🔄 Reassigning idea ${ideaId} to new group ${newGroup.name}`);
+        const response = await apiRequest('PATCH', `/api/ideas/${ideaId}/reassign-group`, {
+          groupId: newGroup.id
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.warn(`Failed to reassign idea ${ideaId}: ${errorData.message}`);
+          return null;
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Successfully reassigned idea ${ideaId} to new group:`, result);
+        return result;
       });
-      if (!migrateRes.ok) {
-        console.warn('Failed to migrate tasks to new group');
-      }
       
-      // Assign selected cards to the new group
-      const updatePromises = selectedCards.map(cardId => 
-        updateIdeaMutation.mutateAsync({
-          id: cardId,
-          updates: { groupId: newGroup.id }
-        })
-      );
+      const results = await Promise.all(reassignmentPromises);
+      const successfulResults = results.filter(r => r !== null);
+      const totalTasksMoved = successfulResults.reduce((sum, result) => sum + (result.tasksMoved || 0), 0);
       
-      await Promise.all(updatePromises);
+      console.log(`🎉 Completed reassignment to new group: ${successfulResults.length} ideas, ${totalTasksMoved} tasks moved`);
       
       // Refresh all relevant data in correct dependency order
       await queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
