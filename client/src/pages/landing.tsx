@@ -1,6 +1,17 @@
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Palette, Wand2, Users, ArrowRight, Play } from "lucide-react";
+import { 
+  Palette, 
+  CheckSquare, 
+  Target, 
+  ArrowRight, 
+  Play, 
+  Lightbulb, 
+  List, 
+  BarChart3,
+  Users2,
+  Download,
+  MousePointer2
+} from "lucide-react";
 
 export default function Landing() {
   const handleGetStarted = () => {
@@ -12,28 +23,32 @@ export default function Landing() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
       {/* Navigation Header */}
-      <nav className="bg-white shadow-sm border-b border-gray-100">
+      <nav className="bg-white/80 backdrop-blur-sm border-b border-blue-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-primary to-secondary rounded-lg flex items-center justify-center">
-                <Palette className="text-white w-4 h-4" />
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <Lightbulb className="text-white w-4 h-4" />
               </div>
-              <span className="text-xl font-bold text-gray-900">Brain Storm to ToDo List</span>
+              <span className="text-xl font-bold text-gray-900">Clear Mind</span>
             </div>
             <div className="hidden md:flex items-center space-x-8">
-              <a href="#features" className="text-muted-foreground hover:text-gray-900 transition-colors">Features</a>
-              <a href="#how-it-works" className="text-muted-foreground hover:text-gray-900 transition-colors">How it Works</a>
-              <a href="#pricing" className="text-muted-foreground hover:text-gray-900 transition-colors">Pricing</a>
+              <a href="#features" className="text-gray-600 hover:text-blue-600 transition-colors font-medium">Features</a>
+              <a href="#benefits" className="text-gray-600 hover:text-blue-600 transition-colors font-medium">Benefits</a>
+              <a href="#cta" className="text-gray-600 hover:text-blue-600 transition-colors font-medium">Get Started</a>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" onClick={handleSignIn} data-testid="button-sign-in">
+              <Button variant="ghost" onClick={handleSignIn} data-testid="button-sign-in" className="text-gray-600">
                 Sign In
               </Button>
-              <Button onClick={handleGetStarted} data-testid="button-get-started">
-                Get Started
+              <Button 
+                onClick={handleGetStarted} 
+                data-testid="button-get-started"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                Open Canvas
               </Button>
             </div>
           </div>
@@ -41,48 +56,46 @@ export default function Landing() {
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-20 pb-32 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="lg:grid lg:grid-cols-12 lg:gap-8 items-center">
-            <div className="lg:col-span-6">
-              <h1 className="text-4xl md:text-6xl font-bold text-gray-900 leading-tight">
-                Brain Storm to ToDo List
-              </h1>
-              <p className="text-xl md:text-2xl text-muted-foreground mt-4 mb-8">
-                Transform brainstorming into actionable tasks
-              </p>
-              <p className="text-lg text-muted-foreground mb-10 leading-relaxed">
-                Turn your visual brainstorming sessions into organized, actionable task lists. 
-                Perfect for creative individuals and small teams who think visually but need structured execution.
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Button 
-                  size="lg" 
-                  onClick={handleGetStarted}
-                  className="bg-primary text-white px-8 py-4 text-lg font-medium hover:bg-primary/90 shadow-lg hover:shadow-xl"
-                  data-testid="button-start-brainstorming"
-                >
-                  Start Brainstorming
-                  <ArrowRight className="ml-2 w-5 h-5" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="lg"
-                  className="border-2 px-8 py-4 text-lg font-medium"
-                  data-testid="button-watch-demo"
-                >
-                  <Play className="mr-2 w-5 h-5" />
-                  Watch Demo
-                </Button>
-              </div>
-            </div>
-            <div className="lg:col-span-6 mt-12 lg:mt-0">
-              <img 
-                src="https://images.unsplash.com/photo-1542744173-8e7e53415bb0?ixlib=rb-4.0.3&ixid=MnwxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8&auto=format&fit=crop&w=800&h=600" 
-                alt="Creative brainstorming session" 
-                className="rounded-2xl shadow-2xl w-full h-auto" 
-              />
-            </div>
+      <section className="pt-16 pb-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <div className="mb-8">
+            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800 mb-6">
+              <Target className="w-4 h-4 mr-2" />
+              Transform your ideas into reality
+            </span>
+          </div>
+          
+          <h1 className="text-5xl md:text-7xl font-bold text-gray-900 leading-tight mb-6">
+            Your Ideas,{' '}
+            <span className="bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              Beautifully Organized
+            </span>
+          </h1>
+          
+          <p className="text-xl md:text-2xl text-gray-600 max-w-4xl mx-auto mb-10 leading-relaxed">
+            Create, organize, and visualize your ideas on an infinite canvas. Turn scattered thoughts 
+            into structured plans with our intuitive idea management platform.
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button 
+              size="lg" 
+              onClick={handleGetStarted}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg font-medium shadow-lg hover:shadow-xl"
+              data-testid="button-start-creating"
+            >
+              Start Creating
+              <ArrowRight className="ml-2 w-5 h-5" />
+            </Button>
+            <Button 
+              variant="outline" 
+              size="lg"
+              className="border-2 px-8 py-4 text-lg font-medium"
+              data-testid="button-watch-demo"
+            >
+              <Play className="mr-2 w-5 h-5" />
+              Watch Demo
+            </Button>
           </div>
         </div>
       </section>
@@ -91,50 +104,160 @@ export default function Landing() {
       <section id="features" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              From Ideas to Action
+            <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">
+              Everything you need to organize ideas
             </h2>
-            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-              Bridge the gap between creative thinking and productive execution with our intuitive canvas-to-task workflow.
+            <p className="text-xl text-gray-600 max-w-3xl mx-auto">
+              Powerful features designed to help you capture, organize, and develop your ideas efficiently.
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8">
-            <Card className="text-center p-8 bg-gray-50 hover:bg-gray-100 transition-colors border-0">
-              <CardContent className="pt-6">
-                <div className="w-16 h-16 bg-gradient-to-br from-primary to-secondary rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <Palette className="text-white w-8 h-8" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Visual Brainstorming</h3>
-                <p className="text-muted-foreground leading-relaxed">
-                  Sketch, draw, and organize your ideas on an infinite canvas with intuitive tools designed for creative thinking.
-                </p>
-              </CardContent>
-            </Card>
+            <div className="text-center p-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <Palette className="text-white w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Infinite Canvas</h3>
+              <p className="text-gray-600 leading-relaxed">
+                Never run out of space. Create and organize ideas on an unlimited canvas that scales with your creativity.
+              </p>
+            </div>
 
-            <Card className="text-center p-8 bg-gray-50 hover:bg-gray-100 transition-colors border-0">
-              <CardContent className="pt-6">
-                <div className="w-16 h-16 bg-gradient-to-br from-accent to-primary rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <Wand2 className="text-white w-8 h-8" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Smart Conversion</h3>
-                <p className="text-muted-foreground leading-relaxed">
-                  Automatically convert your visual concepts into structured, actionable task lists with smart categorization.
-                </p>
-              </CardContent>
-            </Card>
+            <div className="text-center p-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <List className="text-white w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Smart Categories</h3>
+              <p className="text-gray-600 leading-relaxed">
+                Organize ideas with color-coded categories and tags. Find what you need instantly with intelligent filtering.
+              </p>
+            </div>
 
-            <Card className="text-center p-8 bg-gray-50 hover:bg-gray-100 transition-colors border-0">
-              <CardContent className="pt-6">
-                <div className="w-16 h-16 bg-gradient-to-br from-secondary to-accent rounded-2xl flex items-center justify-center mx-auto mb-6">
-                  <Users className="text-white w-8 h-8" />
-                </div>
-                <h3 className="text-xl font-semibold text-gray-900 mb-3">Team Collaboration</h3>
-                <p className="text-muted-foreground leading-relaxed">
-                  Share your canvas with team members and collaborate in real-time on both brainstorming and task execution.
-                </p>
-              </CardContent>
-            </Card>
+            <div className="text-center p-8">
+              <div className="w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                <CheckSquare className="text-white w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-900 mb-3">Quick Capture</h3>
+              <p className="text-gray-600 leading-relaxed">
+                Capture ideas instantly with our streamlined interface. Add details, colors, and categories in seconds.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Additional Features */}
+      <section id="benefits" className="py-20 bg-gray-50">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <BarChart3 className="text-orange-600 w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Progress Tracking</h3>
+                <p className="text-gray-600">Monitor project progress with visual indicators and completion percentages.</p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-pink-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <MousePointer2 className="text-pink-600 w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Drag & Drop</h3>
+                <p className="text-gray-600">Intuitively reorganize ideas and tasks with smooth drag-and-drop interactions.</p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Target className="text-blue-600 w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Priority System</h3>
+                <p className="text-gray-600">Set priorities and organize tasks by importance to focus on what matters most.</p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Users2 className="text-purple-600 w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Collaboration</h3>
+                <p className="text-gray-600">Share projects and collaborate with team members in real-time.</p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <Download className="text-green-600 w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Export & Share</h3>
+                <p className="text-gray-600">Export your organized ideas and task lists in multiple formats.</p>
+              </div>
+            </div>
+
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                <CheckSquare className="text-indigo-600 w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Task Management</h3>
+                <p className="text-gray-600">Convert ideas into actionable tasks with completion tracking and deadlines.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Trust Section */}
+      <section className="py-16 bg-white">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-8">Trusted by creative minds everywhere</h2>
+          <div className="flex flex-wrap justify-center items-center gap-8 text-gray-500">
+            <div className="px-4 py-2 bg-gray-100 rounded-lg font-medium">Creative Co.</div>
+            <div className="px-4 py-2 bg-gray-100 rounded-lg font-medium">Design Studio</div>
+            <div className="px-4 py-2 bg-gray-100 rounded-lg font-medium">Tech Startup</div>
+          </div>
+          <div className="mt-8 flex justify-center items-center space-x-1">
+            {[1, 2, 3, 4, 5].map((star) => (
+              <span key={star} className="text-yellow-400 text-xl">★</span>
+            ))}
+            <span className="ml-2 text-gray-600">4.9 out of 5 stars</span>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section id="cta" className="py-20 bg-gradient-to-r from-blue-600 to-purple-700">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-4xl md:text-5xl font-bold text-white mb-6">
+            Ready to organize your ideas?
+          </h2>
+          <p className="text-xl text-blue-100 mb-8 max-w-2xl mx-auto">
+            Join thousands of creators who use Clear Mind to turn their thoughts into actionable plans.
+          </p>
+          <Button 
+            size="lg"
+            onClick={handleGetStarted}
+            className="bg-white text-blue-600 hover:bg-gray-100 px-8 py-4 text-lg font-medium shadow-lg hover:shadow-xl"
+            data-testid="button-get-started-free"
+          >
+            Get Started Free
+            <ArrowRight className="ml-2 w-5 h-5" />
+          </Button>
+          <div className="mt-6 flex items-center justify-center space-x-6 text-sm text-blue-100">
+            <div className="flex items-center">
+              <CheckSquare className="w-4 h-4 mr-2" />
+              Free forever plan
+            </div>
+            <div className="flex items-center">
+              <CheckSquare className="w-4 h-4 mr-2" />
+              No credit card required
+            </div>
           </div>
         </div>
       </section>
