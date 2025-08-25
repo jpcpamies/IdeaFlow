@@ -96,6 +96,7 @@ export const tasks = pgTable("tasks", {
   title: varchar("title").notNull(),
   completed: boolean("completed").default(false),
   priority: integer("priority").default(3), // 1=High, 2=Medium, 3=Low
+  hidden: boolean("hidden").default(false), // For task recovery system
   orderIndex: integer("order_index").default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });

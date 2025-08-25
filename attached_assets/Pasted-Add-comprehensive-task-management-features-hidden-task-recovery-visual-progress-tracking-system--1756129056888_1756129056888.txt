@@ -1,0 +1,65 @@
+Add comprehensive task management features: hidden task recovery + visual progress tracking system.
+
+FEATURE 1: HIDDEN TASK RECOVERY
+
+1. **Database Enhancement:**
+   - Add "hidden" boolean field to tasks table (default: false)
+   - Modify "Clear Completed": set hidden=true instead of deleting
+   - Preserve all task data, relationships, and completion status when hidden
+
+2. **Three-Dots Menu Logic:**
+   - Show "Show Hidden Tasks (X)" ONLY when hidden tasks exist
+   - Query: `SELECT COUNT(*) FROM tasks WHERE todolist_id=? AND hidden=true`
+   - Menu item disappears after restoration
+
+3. **Restoration Functionality:**
+   - Bulk restore: `UPDATE tasks SET hidden=false WHERE todolist_id=? AND hidden=true`
+   - Tasks appear in original sections with original priority
+   - Brief toast notification: "X tasks restored"
+
+FEATURE 2: VISUAL PROGRESS TRACKING
+
+4. **Progress Calculation Logic:**
+   - Formula: (completed_tasks / total_visible_tasks) × 100
+   - Exclude hidden tasks from calculation
+   - Update progress in real-time when tasks completed/uncompleted
+   - Round to nearest whole percentage
+
+5. **Progress Bar Locations:**
+SIDEBAR (Right):
+2G                           [████████░░] 80%
+0 of 5 completed
+MODAL HEADER:
+2G - TodoList               [████████░░] 80%
+Show Priority: All
+
+6. **Progress Bar Design:**
+- Horizontal progress bar with percentage label
+- Color coding: 0-33% (red), 34-66% (yellow), 67-100% (green)
+- Smooth animation when progress changes
+- Width: ~120px in sidebar, ~200px in modal
+
+7. **Database Query for Progress:**
+```sql
+SELECT 
+  COUNT(*) as total_tasks,
+  COUNT(CASE WHEN completed = true THEN 1 END) as completed_tasks
+FROM tasks 
+WHERE todolist_id = ? AND hidden = false
+
+Real-time Updates:
+
+Progress updates immediately when checkbox clicked
+Sidebar and modal sync automatically
+Consider section-level progress bars as enhancement
+
+
+
+INTEGRATION POINTS:
+
+Progress calculation respects priority filters
+Hidden tasks don't affect progress percentage
+Restored tasks update progress immediately
+Export functions include progress data in headers
+
+This creates a comprehensive task management system with safety mechanisms and motivational progress feedback.

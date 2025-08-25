@@ -545,6 +545,38 @@ export default function Canvas() {
     enabled: todoLists.length > 0,
   }) as { data: Section[] };
 
+  // Progress tracking for TodoLists
+  const { data: todoListsProgress = {} } = useQuery({
+    queryKey: ['/api/todolists/progress'],
+    queryFn: async () => {
+      const progressPromises = todoLists.map(async (todoList: TodoList) => {
+        const response = await apiRequest('GET', `/api/todolists/${todoList.id}/progress`);
+        if (!response.ok) return [todoList.id, { total: 0, completed: 0, percentage: 0 }];
+        const progress = await response.json();
+        return [todoList.id, progress];
+      });
+      const results = await Promise.all(progressPromises);
+      return Object.fromEntries(results);
+    },
+    enabled: todoLists.length > 0,
+  });
+
+  // Hidden tasks count for each TodoList
+  const { data: hiddenTasksCounts = {} } = useQuery({
+    queryKey: ['/api/todolists/hidden-counts'],
+    queryFn: async () => {
+      const countPromises = todoLists.map(async (todoList: TodoList) => {
+        const response = await apiRequest('GET', `/api/todolists/${todoList.id}/hidden-tasks-count`);
+        if (!response.ok) return [todoList.id, 0];
+        const { count } = await response.json();
+        return [todoList.id, count];
+      });
+      const results = await Promise.all(countPromises);
+      return Object.fromEntries(results);
+    },
+    enabled: todoLists.length > 0,
+  });
+
   // Fetch sections for selected TodoList
   const { data: todoListSections = [] } = useQuery({
     queryKey: ['/api/todolists', selectedTodoList?.id, 'sections'],
@@ -1720,6 +1752,35 @@ export default function Canvas() {
     setIsBulkExportModalOpen(false);
   };
 
+  // Progress bar component
+  const ProgressBar = ({ total, completed, percentage, width = "120px" }: { 
+    total: number; 
+    completed: number; 
+    percentage: number; 
+    width?: string;
+  }) => {
+    const getProgressColor = (percent: number) => {
+      if (percent >= 67) return 'bg-green-500';
+      if (percent >= 34) return 'bg-yellow-500';
+      return 'bg-red-500';
+    };
+
+    return (
+      <div className="flex items-center space-x-2">
+        <div className="flex-1 bg-gray-200 rounded-full h-2" style={{ width }}>
+          <div 
+            className={`h-2 rounded-full transition-all duration-300 ${getProgressColor(percentage)}`}
+            style={{ width: `${percentage}%` }}
+            data-testid="progress-bar-fill"
+          />
+        </div>
+        <span className="text-xs text-gray-600 font-medium min-w-[35px]" data-testid="progress-percentage">
+          {percentage}%
+        </span>
+      </div>
+    );
+  };
+
   const reorderTaskMutation = useMutation({
     mutationFn: async ({ id, orderIndex, sectionId }: { id: string; orderIndex: number; sectionId?: string | null }) => {
       const response = await apiRequest('PATCH', `/api/tasks/${id}/reorder`, { orderIndex, sectionId });
@@ -1932,6 +1993,28 @@ export default function Canvas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
     }
+  });
+
+  // Hidden task recovery mutation
+  const restoreHiddenTasksMutation = useMutation({
+    mutationFn: async (todoListId: string) => {
+      const response = await apiRequest('POST', `/api/todolists/${todoListId}/restore-hidden-tasks`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to restore hidden tasks');
+      }
+      return response.json();
+    },
+    onSuccess: (data, todoListId) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists/progress'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists/hidden-counts'] });
+      
+      // Show confirmation message
+      if (data.restoredCount > 0) {
+        console.log(`${data.restoredCount} tasks restored successfully`);
+      }
+    },
   });
 
   // Bulk task operations mutations
@@ -4661,6 +4744,27 @@ export default function Canvas() {
                       </Button>
                     </div>
                     
+                    {/* Progress Bar */}
+                    {(() => {
+                      const progress = todoListsProgress[todoList.id];
+                      if (progress) {
+                        return (
+                          <div className="mb-3">
+                            <ProgressBar 
+                              total={progress.total} 
+                              completed={progress.completed} 
+                              percentage={progress.percentage} 
+                              width="100px"
+                            />
+                            <div className="text-xs text-gray-500 mt-1" data-testid={`task-summary-${todoList.id}`}>
+                              {progress.completed} of {progress.total} completed
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                    
                     {/* Section Preview Structure when priority filter is active */}
                     {shouldShowSections && isExpanded ? (
                       <div className="space-y-3">
@@ -5209,7 +5313,28 @@ export default function Canvas() {
                 </div>
               ) : (
                 <>
-                  <span className="text-lg font-semibold">{selectedTodoList?.name}</span>
+                  <div className="flex items-center space-x-4 flex-1">
+                    <span className="text-lg font-semibold">{selectedTodoList?.name}</span>
+                    {(() => {
+                      const progress = todoListsProgress[selectedTodoList?.id || ''];
+                      if (progress) {
+                        return (
+                          <div className="flex items-center space-x-3">
+                            <ProgressBar 
+                              total={progress.total} 
+                              completed={progress.completed} 
+                              percentage={progress.percentage} 
+                              width="200px"
+                            />
+                            <span className="text-sm text-gray-600" data-testid={`modal-task-summary-${selectedTodoList?.id}`}>
+                              {progress.completed} of {progress.total}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
+                  </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button
@@ -5237,6 +5362,21 @@ export default function Canvas() {
                         <Trash2 className="w-4 h-4 mr-2" />
                         Clear Completed
                       </DropdownMenuItem>
+                      {(() => {
+                        const hiddenCount = hiddenTasksCounts[selectedTodoList?.id || ''] || 0;
+                        if (hiddenCount > 0) {
+                          return (
+                            <DropdownMenuItem
+                              onClick={() => selectedTodoList && restoreHiddenTasksMutation.mutate(selectedTodoList.id)}
+                              data-testid="button-restore-hidden-tasks"
+                            >
+                              <Undo className="w-4 h-4 mr-2" />
+                              Show Hidden Tasks ({hiddenCount})
+                            </DropdownMenuItem>
+                          );
+                        }
+                        return null;
+                      })()}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </>
