@@ -4661,9 +4661,24 @@ export default function Canvas() {
         {/* Right Sidebar - To-Do Lists */}
         {isRightSidebarOpen && (
         <aside className="w-80 bg-white border-l border-gray-200 flex flex-col">
-          {/* Global Priority Filter */}
+          {/* Sidebar Header with Toggle */}
           <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center space-x-3 mb-3">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gray-900">To-Do Lists</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                className="h-8 w-8 p-0 hover:bg-gray-100"
+                data-testid="button-toggle-sidebar"
+                title="Collapse sidebar"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {/* Priority Filter */}
+            <div className="flex items-center space-x-3 mb-4">
               <label className="text-sm font-medium text-gray-700">Filter by Priority:</label>
               <Select value={globalPriorityFilter} onValueChange={(value: 'all' | '1' | '2' | '3') => setGlobalPriorityFilter(value)}>
                 <SelectTrigger className="w-44 h-8 text-sm">
@@ -4677,37 +4692,23 @@ export default function Canvas() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-semibold text-gray-900">To-Do Lists</h2>
-              <div className="flex space-x-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    // Initialize all TodoLists as selected
-                    setSelectedTodoListsForExport(new Set(todoLists.map((tl: TodoList) => tl.id)));
-                    setIsBulkExportModalOpen(true);
-                  }}
-                  className="h-8 w-8 p-0"
-                  data-testid="button-bulk-export"
-                  title="Export Tasks from Multiple TodoLists"
-                >
-                  <Download className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-                  className="h-8 w-8 p-0"
-                  data-testid="button-toggle-sidebar"
-                >
-                  {isRightSidebarOpen ? (
-                    <ChevronRight className="w-4 h-4" />
-                  ) : (
-                    <ChevronLeft className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
+
+            {/* Export Actions */}
+            <div className="flex flex-col space-y-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Initialize all TodoLists as selected
+                  setSelectedTodoListsForExport(new Set(todoLists.map((tl: TodoList) => tl.id)));
+                  setIsBulkExportModalOpen(true);
+                }}
+                className="w-full justify-center"
+                data-testid="button-bulk-export"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Todo Lists
+              </Button>
             </div>
           </div>
 
