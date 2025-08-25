@@ -61,6 +61,7 @@ import {
   CheckSquare,
   RefreshCw,
   LogOut,
+  Download,
   Layers as GroupIcon,
   Layers
 } from "lucide-react";
@@ -148,6 +149,15 @@ export default function Canvas() {
   
   // Sidebar TodoList expand/collapse state
   const [expandedSidebarTodoLists, setExpandedSidebarTodoLists] = useState<Set<string>>(new Set());
+  
+  // Export functionality states
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportPriorities, setExportPriorities] = useState({
+    high: true,
+    medium: true,
+    low: true
+  });
+  const [exportFormat, setExportFormat] = useState<'markdown' | 'csv' | 'pdf'>('markdown');
   
   // TodoList management states
   const [editingTodoListId, setEditingTodoListId] = useState<string | null>(null);
@@ -1299,6 +1309,193 @@ export default function Canvas() {
         };
       })
       .filter(section => section.hasMatchingTasks);
+  };
+
+  // Export functionality
+  const getSelectedPriorities = () => {
+    const priorities = [];
+    if (exportPriorities.high) priorities.push(1);
+    if (exportPriorities.medium) priorities.push(2);
+    if (exportPriorities.low) priorities.push(3);
+    return priorities;
+  };
+
+  const getFilteredTasksForExport = () => {
+    if (!selectedTodoList) return { sections: [], unsectionedTasks: [] };
+    
+    const todoListTasks = allTasks.filter((task: Task) => task.todoListId === selectedTodoList.id);
+    const selectedPriorities = getSelectedPriorities();
+    
+    const filteredTasks = todoListTasks.filter((task: Task) => {
+      const taskPriority = task.priority || 3;
+      return selectedPriorities.includes(taskPriority);
+    });
+
+    const sectionsForExport = todoListSections
+      .sort((a: Section, b: Section) => (a.orderIndex || 0) - (b.orderIndex || 0))
+      .map(section => {
+        const sectionTasks = filteredTasks
+          .filter((task: Task) => task.sectionId === section.id)
+          .sort((a: Task, b: Task) => (a.orderIndex || 0) - (b.orderIndex || 0));
+        
+        return {
+          ...section,
+          tasks: sectionTasks
+        };
+      });
+
+    const unsectionedTasks = filteredTasks
+      .filter((task: Task) => !task.sectionId)
+      .sort((a: Task, b: Task) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+    return { sections: sectionsForExport, unsectionedTasks };
+  };
+
+  const getPriorityLabel = (priority: number | null) => {
+    switch (priority) {
+      case 1: return 'High Priority';
+      case 2: return 'Medium Priority';
+      case 3: return 'Low Priority';
+      default: return 'Low Priority';
+    }
+  };
+
+  const generateMarkdownExport = () => {
+    if (!selectedTodoList) return '';
+    
+    const { sections, unsectionedTasks } = getFilteredTasksForExport();
+    const selectedPriorityLabels = [];
+    if (exportPriorities.high) selectedPriorityLabels.push('High Priority');
+    if (exportPriorities.medium) selectedPriorityLabels.push('Medium Priority');
+    if (exportPriorities.low) selectedPriorityLabels.push('Low Priority');
+    
+    const allTasks = [...sections.flatMap(s => s.tasks), ...unsectionedTasks];
+    const completedCount = allTasks.filter((t: Task) => t.completed).length;
+    const pendingCount = allTasks.length - completedCount;
+    
+    let markdown = `# ${selectedTodoList.name} - Task Export\n`;
+    markdown += `**Export Date:** ${new Date().toLocaleString()}\n`;
+    markdown += `**Priority Filter:** ${selectedPriorityLabels.join(', ')}\n\n`;
+    
+    // Export sections
+    for (const section of sections) {
+      markdown += `## ${section.name}\n`;
+      if (section.tasks.length === 0) {
+        markdown += `*No tasks in this section*\n\n`;
+      } else {
+        for (const task of section.tasks) {
+          const checkbox = task.completed ? '[x]' : '[ ]';
+          const priorityLabel = getPriorityLabel(task.priority);
+          markdown += `- ${checkbox} ${task.title} (${priorityLabel})\n`;
+        }
+        markdown += '\n';
+      }
+    }
+    
+    // Export unsectioned tasks
+    if (unsectionedTasks.length > 0) {
+      markdown += `## Unsectioned Tasks\n`;
+      for (const task of unsectionedTasks) {
+        const checkbox = task.completed ? '[x]' : '[ ]';
+        const priorityLabel = getPriorityLabel(task.priority);
+        markdown += `- ${checkbox} ${task.title} (${priorityLabel})\n`;
+      }
+      markdown += '\n';
+    }
+    
+    markdown += `---\n`;
+    markdown += `**Summary:** ${allTasks.length} tasks exported (${completedCount} completed, ${pendingCount} pending)\n`;
+    
+    return markdown;
+  };
+
+  const generateCSVExport = () => {
+    if (!selectedTodoList) return '';
+    
+    const { sections, unsectionedTasks } = getFilteredTasksForExport();
+    const allTasks = [...sections.flatMap(s => s.tasks.map((t: Task) => ({ ...t, sectionName: s.name }))), 
+                     ...unsectionedTasks.map((t: Task) => ({ ...t, sectionName: 'Unsectioned' }))];
+    
+    let csv = 'Section,Task,Priority,Completed,Date\n';
+    
+    for (const task of allTasks) {
+      const sectionName = task.sectionName || 'Unsectioned';
+      const priorityLabel = getPriorityLabel(task.priority);
+      const completedStatus = task.completed ? 'Yes' : 'No';
+      const exportDate = new Date().toLocaleDateString();
+      
+      // Escape CSV values
+      const escapeCSV = (value: string) => {
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      };
+      
+      csv += `${escapeCSV(sectionName)},${escapeCSV(task.title)},${escapeCSV(priorityLabel)},${escapeCSV(completedStatus)},${escapeCSV(exportDate)}\n`;
+    }
+    
+    return csv;
+  };
+
+  const downloadFile = (content: string, filename: string, mimeType: string) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleExport = () => {
+    if (!selectedTodoList) return;
+    
+    const selectedPriorities = getSelectedPriorities();
+    if (selectedPriorities.length === 0) {
+      alert('Please select at least one priority level to export.');
+      return;
+    }
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    const sanitizedName = selectedTodoList.name.replace(/[^a-zA-Z0-9]/g, '_');
+    
+    switch (exportFormat) {
+      case 'markdown':
+        const markdownContent = generateMarkdownExport();
+        downloadFile(markdownContent, `TodoList_${sanitizedName}_${timestamp}.md`, 'text/markdown');
+        break;
+      case 'csv':
+        const csvContent = generateCSVExport();
+        downloadFile(csvContent, `TodoList_${sanitizedName}_${timestamp}.csv`, 'text/csv');
+        break;
+      case 'pdf':
+        // For now, we'll generate HTML content and let the user print to PDF
+        const htmlContent = generateMarkdownExport().replace(/\n/g, '<br>').replace(/## (.*)/g, '<h2>$1</h2>').replace(/# (.*)/g, '<h1>$1</h1>');
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(`
+            <html>
+              <head>
+                <title>${selectedTodoList.name} - Task Export</title>
+                <style>
+                  body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                  h1 { color: #333; border-bottom: 2px solid #333; }
+                  h2 { color: #666; border-bottom: 1px solid #ccc; }
+                </style>
+              </head>
+              <body>${htmlContent}</body>
+            </html>
+          `);
+          printWindow.document.close();
+          printWindow.print();
+        }
+        break;
+    }
+    
+    setIsExportModalOpen(false);
   };
 
   const reorderTaskMutation = useMutation({
@@ -5028,15 +5225,26 @@ export default function Canvas() {
           </div>
 
           <DialogFooter className="flex justify-between">
-            <Button 
-              variant="ghost" 
-              onClick={() => confirmDeleteTodoList(selectedTodoList!)}
-              className="text-black hover:bg-red-600 hover:text-white transition-colors"
-              data-testid="button-delete-todolist"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete TodoList
-            </Button>
+            <div className="flex space-x-2">
+              <Button 
+                variant="ghost" 
+                onClick={() => setIsExportModalOpen(true)}
+                className="text-black hover:bg-blue-600 hover:text-white transition-colors"
+                data-testid="button-export-todolist"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Export Tasks
+              </Button>
+              <Button 
+                variant="ghost" 
+                onClick={() => confirmDeleteTodoList(selectedTodoList!)}
+                className="text-black hover:bg-red-600 hover:text-white transition-colors"
+                data-testid="button-delete-todolist"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete TodoList
+              </Button>
+            </div>
             <Button variant="outline" onClick={closeTodoListModal} data-testid="button-close-todolist-modal">
               Close
             </Button>
@@ -5209,6 +5417,95 @@ export default function Canvas() {
               data-testid="button-confirm-delete-task"
             >
               {deleteTaskMutation.isPending ? 'Deleting...' : 'Delete Task'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Export Options Modal */}
+      <Dialog open={isExportModalOpen} onOpenChange={setIsExportModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Export Tasks</DialogTitle>
+            <DialogDescription>
+              Choose which priority levels and format to export from "{selectedTodoList?.name}".
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Priority Selection */}
+            <div>
+              <h4 className="text-sm font-medium mb-3">Select Priority Levels:</h4>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={exportPriorities.high}
+                    onCheckedChange={(checked) => 
+                      setExportPriorities(prev => ({ ...prev, high: !!checked }))
+                    }
+                    id="export-high"
+                    data-testid="checkbox-export-high-priority"
+                  />
+                  <label htmlFor="export-high" className="text-sm text-red-600 font-medium">
+                    High Priority Tasks
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={exportPriorities.medium}
+                    onCheckedChange={(checked) => 
+                      setExportPriorities(prev => ({ ...prev, medium: !!checked }))
+                    }
+                    id="export-medium"
+                    data-testid="checkbox-export-medium-priority"
+                  />
+                  <label htmlFor="export-medium" className="text-sm text-yellow-600 font-medium">
+                    Medium Priority Tasks
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={exportPriorities.low}
+                    onCheckedChange={(checked) => 
+                      setExportPriorities(prev => ({ ...prev, low: !!checked }))
+                    }
+                    id="export-low"
+                    data-testid="checkbox-export-low-priority"
+                  />
+                  <label htmlFor="export-low" className="text-sm text-green-600 font-medium">
+                    Low Priority Tasks
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Format Selection */}
+            <div>
+              <h4 className="text-sm font-medium mb-3">Export Format:</h4>
+              <Select value={exportFormat} onValueChange={(value: 'markdown' | 'csv' | 'pdf') => setExportFormat(value)}>
+                <SelectTrigger data-testid="select-export-format">
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="markdown">Markdown (.md)</SelectItem>
+                  <SelectItem value="csv">CSV (.csv)</SelectItem>
+                  <SelectItem value="pdf">PDF (Print)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleExport}
+              disabled={!exportPriorities.high && !exportPriorities.medium && !exportPriorities.low}
+              data-testid="button-export-confirm"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export
             </Button>
           </DialogFooter>
         </DialogContent>
