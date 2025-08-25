@@ -146,6 +146,7 @@ export default function Canvas() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [priorityFilter, setPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
   const [globalPriorityFilter, setGlobalPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
+  const [showCompletedTasks, setShowCompletedTasks] = useState(true);
   
   // Sidebar TodoList expand/collapse state
   const [expandedSidebarTodoLists, setExpandedSidebarTodoLists] = useState<Set<string>>(new Set());
@@ -1147,6 +1148,8 @@ export default function Canvas() {
     onSuccess: (updatedTask) => {
       console.log('Task toggled successfully:', updatedTask);
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists/progress'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists/hidden-counts'] });
       if (selectedTodoList) {
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'tasks'] });
       }
@@ -5362,6 +5365,24 @@ export default function Canvas() {
                         <Trash2 className="w-4 h-4 mr-2" />
                         Clear Completed
                       </DropdownMenuItem>
+                      {todoListTasks.some(task => task.completed) && (
+                        <DropdownMenuItem
+                          onClick={() => setShowCompletedTasks(!showCompletedTasks)}
+                          data-testid="button-toggle-completed"
+                        >
+                          {showCompletedTasks ? (
+                            <>
+                              <CheckSquare className="w-4 h-4 mr-2" />
+                              Hide Completed
+                            </>
+                          ) : (
+                            <>
+                              <Check className="w-4 h-4 mr-2" />
+                              Show Completed
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                      )}
                       {(() => {
                         const hiddenCount = hiddenTasksCounts[selectedTodoList?.id || ''] || 0;
                         if (hiddenCount > 0) {
@@ -5488,7 +5509,7 @@ export default function Canvas() {
                                     </div>
 
                                     {/* Completed Tasks */}
-                                    {completedTasks.length > 0 && (
+                                    {completedTasks.length > 0 && showCompletedTasks && (
                                       <div className="pt-3 border-t border-gray-200">
                                         <h4 className="text-sm font-medium text-gray-500 mb-2">
                                           Completed ({completedTasks.length})
@@ -5571,7 +5592,7 @@ export default function Canvas() {
                             )}
 
                             {/* Completed Tasks */}
-                            {completedUnsectioned.length > 0 && (
+                            {completedUnsectioned.length > 0 && showCompletedTasks && (
                               <div className="space-y-2">
                                 <h4 className="text-sm font-medium text-gray-500">
                                   Completed ({completedUnsectioned.length})
