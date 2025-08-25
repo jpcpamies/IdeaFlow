@@ -2601,7 +2601,8 @@ export default function Canvas() {
         ideaIds: selectedCards
       });
       if (!migrateRes.ok) {
-        console.warn('Failed to migrate tasks to target group');
+        const errorText = await migrateRes.text();
+        throw new Error(`Task migration failed: ${errorText}`);
       }
       
       // Update all selected cards
@@ -2614,10 +2615,13 @@ export default function Canvas() {
       
       await Promise.all(updatePromises);
       
-      // Refresh data to update UI
-      queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      // Refresh all related data to update UI - including tasks to fix counter sync issues
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['/api/ideas'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/groups'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists'] }),
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] })
+      ]);
       
       setIsAssignGroupModalOpen(false);
       setIsGroupActionsModalOpen(false);

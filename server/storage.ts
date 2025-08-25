@@ -186,36 +186,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async moveTasksToGroup(ideaIds: string[], targetGroupId: string): Promise<number> {
-    // Find the target group's TodoList (if it exists)
-    const [targetTodoList] = await db
-      .select()
-      .from(todoLists)
-      .where(eq(todoLists.groupId, targetGroupId))
-      .limit(1);
+    return await db.transaction(async (tx) => {
+      // Find the target group's TodoList (if it exists) within transaction
+      const [targetTodoList] = await tx
+        .select()
+        .from(todoLists)
+        .where(eq(todoLists.groupId, targetGroupId))
+        .limit(1);
 
-    if (!targetTodoList) {
-      // No TodoList exists for target group yet, just return 0
-      // Tasks will be handled when TodoList is created
-      return 0;
-    }
+      if (!targetTodoList) {
+        // No TodoList exists for target group yet, just return 0
+        // Tasks will be handled when TodoList is created
+        return 0;
+      }
 
-    // Find all tasks that are linked to the ideas we're moving
-    const tasksToMove = await db
-      .select()
-      .from(tasks)
-      .where(inArray(tasks.ideaId, ideaIds));
+      // Find all tasks that are linked to the ideas we're moving
+      const tasksToMove = await tx
+        .select()
+        .from(tasks)
+        .where(inArray(tasks.ideaId, ideaIds));
 
-    if (tasksToMove.length === 0) {
-      return 0;
-    }
+      if (tasksToMove.length === 0) {
+        return 0;
+      }
 
-    // Move tasks to the target TodoList
-    const result = await db
-      .update(tasks)
-      .set({ todoListId: targetTodoList.id })
-      .where(inArray(tasks.ideaId, ideaIds));
+      // Move tasks to the target TodoList atomically
+      const result = await tx
+        .update(tasks)
+        .set({ todoListId: targetTodoList.id })
+        .where(inArray(tasks.ideaId, ideaIds));
 
-    return result.rowCount || 0;
+      return result.rowCount || 0;
+    });
   }
 
   async createTask(task: InsertTask): Promise<Task> {
