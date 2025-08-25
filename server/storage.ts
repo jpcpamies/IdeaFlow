@@ -79,6 +79,7 @@ export interface IStorage {
   
   // Progress tracking operations
   getTodoListProgress(todoListId: string): Promise<{ total: number; completed: number; percentage: number }>;
+  getProjectProgress(projectId: string): Promise<number>;
   
   // Bulk task operations
   bulkUpdateTasks(taskIds: string[], updates: Partial<InsertTask>, userId: string): Promise<Task[]>;
@@ -522,6 +523,29 @@ export class DatabaseStorage implements IStorage {
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
     return { total, completed, percentage };
+  }
+
+  // Calculate individual project progress based on all its todolists
+  async getProjectProgress(projectId: string): Promise<number> {
+    // Get all todolists for this specific project
+    const projectTodoLists = await db
+      .select({ id: todoLists.id })
+      .from(todoLists)
+      .where(eq(todoLists.projectId, projectId));
+
+    if (projectTodoLists.length === 0) return 0;
+
+    // Calculate progress for each todolist and aggregate
+    let totalTasks = 0;
+    let completedTasks = 0;
+
+    for (const todoList of projectTodoLists) {
+      const progress = await this.getTodoListProgress(todoList.id);
+      totalTasks += progress.total;
+      completedTasks += progress.completed;
+    }
+
+    return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   }
 
   // Calculate overall project progress based on all todolists

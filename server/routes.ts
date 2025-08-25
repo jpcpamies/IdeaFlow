@@ -1076,7 +1076,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
 
-  // Progress tracking route
+  // Progress tracking routes
   app.get("/api/todolists/:id/progress", isAuthenticated, async (req: any, res) => {
     try {
       const userId = req.user?.claims?.sub;
@@ -1093,6 +1093,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting todolist progress:", error);
       res.status(500).json({ message: "Failed to get todolist progress" });
+    }
+  });
+
+  app.get("/api/projects/:id/progress", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.claims?.sub;
+      const { id } = req.params;
+      
+      // Verify user owns the project
+      const project = await storage.getProject(id);
+      if (!project || project.userId !== userId) {
+        return res.status(404).json({ message: "Project not found" });
+      }
+      
+      const progress = await storage.getProjectProgress(id);
+      res.json({ percentage: progress });
+    } catch (error) {
+      console.error("Error getting project progress:", error);
+      res.status(500).json({ message: "Failed to get project progress" });
     }
   });
 

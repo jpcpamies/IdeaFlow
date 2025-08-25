@@ -1138,6 +1138,10 @@ export default function Canvas() {
         // Invalidate progress calculation after task completion toggle
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
       }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
+      }
     },
     onError: (error) => {
       console.error('Failed to toggle task:', error);
@@ -1224,6 +1228,15 @@ export default function Canvas() {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
       
+      // Invalidate progress calculation after task creation
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
+      }
+      
       // If an idea was created, also invalidate ideas and groups queries for canvas sync
       if (ideaCreated && ideaId) {
         queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
@@ -1245,6 +1258,14 @@ export default function Canvas() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      // Invalidate progress calculation after task update
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
+      }
       setEditingTaskId(null);
       setEditingTaskTitle('');
     }
@@ -1807,6 +1828,14 @@ export default function Canvas() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList?.id, 'tasks'] });
+      // Invalidate progress calculation after task reorder
+      if (selectedTodoList?.id) {
+        queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
+      }
     }
   });
 
@@ -1831,6 +1860,10 @@ export default function Canvas() {
       // IMPORTANT: Invalidate progress calculation after task deletion
       if (selectedTodoList?.id) {
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
       }
       
       // If a linked idea was deleted, also invalidate idea queries for canvas sync
@@ -1988,6 +2021,10 @@ export default function Canvas() {
       if (selectedTodoList?.id) {
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
       }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
+      }
       setSelectedTasks(new Set());
       setBulkActionMode(false);
     }
@@ -2007,6 +2044,10 @@ export default function Canvas() {
       // Invalidate progress calculation after bulk task deletion
       if (selectedTodoList?.id) {
         queryClient.invalidateQueries({ queryKey: ['/api/todolists', selectedTodoList.id, 'progress'] });
+      }
+      // Invalidate project progress for dashboard update
+      if (projectId) {
+        queryClient.invalidateQueries({ queryKey: ['/api/projects', projectId, 'progress'] });
       }
       setSelectedTasks(new Set());
       setBulkActionMode(false);

@@ -43,6 +43,43 @@ import { isUnauthorizedError } from "@/lib/authUtils";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Project as ProjectType, User } from "@shared/schema";
 
+// Project Progress Bar Component
+const ProjectProgressBar = ({ projectId }: { projectId: string }) => {
+  const { data: progressData, isLoading } = useQuery<{ percentage: number }>({
+    queryKey: ['/api/projects', projectId, 'progress'],
+    enabled: !!projectId,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="mt-2">
+        <div className="h-2 bg-gray-100 rounded-full animate-pulse" />
+      </div>
+    );
+  }
+
+  const percentage = progressData?.percentage || 0;
+  const progressColor = percentage >= 67 ? 'bg-green-500' : percentage >= 34 ? 'bg-yellow-500' : 'bg-red-500';
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs text-muted-foreground">Progress</span>
+        <span className="text-xs font-medium text-gray-900" data-testid={`text-project-progress-${projectId}`}>
+          {percentage}%
+        </span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div 
+          className={`h-full transition-all duration-300 ${progressColor}`}
+          style={{ width: `${percentage}%` }}
+          data-testid={`progress-bar-${projectId}`}
+        />
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard() {
   const { toast } = useToast();
   const { isAuthenticated, isLoading, user } = useAuth() as { isAuthenticated: boolean; isLoading: boolean; user: User | null };
@@ -543,6 +580,7 @@ export default function Dashboard() {
                             <p className="text-muted-foreground text-sm" data-testid={`text-project-description-${project.id}`}>
                               {project.description || 'No description'}
                             </p>
+                            <ProjectProgressBar projectId={project.id} />
                             <div className="flex items-center space-x-4 mt-2">
                               <span className="text-xs text-muted-foreground" data-testid={`text-project-date-${project.id}`}>
                                 {formatTimeAgo(project.updatedAt)}
