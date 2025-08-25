@@ -1331,6 +1331,10 @@ export default function Canvas() {
     mutationFn: async (id: string) => {
       const response = await apiRequest('DELETE', `/api/todolists/${id}`);
       if (!response.ok) {
+        // If TodoList is already deleted (404), treat as success
+        if (response.status === 404) {
+          return { message: "TodoList already deleted" };
+        }
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to delete TodoList');
       }
