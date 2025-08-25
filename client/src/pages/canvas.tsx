@@ -234,6 +234,20 @@ export default function Canvas() {
       // For all other updates (group, title, description, etc.), invalidate queries
       queryClient.invalidateQueries({ queryKey: ['/api/ideas'] });
       queryClient.invalidateQueries({ queryKey: ['/api/groups'] });
+      
+      // Also invalidate TodoLists to ensure right sidebar updates when idea groups change
+      queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      
+      // Force refetch of specific TodoList tasks to ensure immediate sync
+      const isGroupUpdate = 'groupId' in variables.updates;
+      if (isGroupUpdate) {
+        // Invalidate all TodoList tasks to ensure immediate sidebar synchronization
+        queryClient.invalidateQueries({ 
+          queryKey: ['/api/todolists'], 
+          refetchType: 'active' 
+        });
+        console.log('🔄 Group change detected - forcing TodoLists refresh for sidebar sync');
+      }
     },
     onError: (error, variables) => {
       console.error('Failed to update idea:', error);
