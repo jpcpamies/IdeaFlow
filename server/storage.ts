@@ -96,6 +96,7 @@ export interface IStorage {
     activeProjects: number;
     tasksCreated: number;
     ideasCaptured: number;
+    projectProgress: number;
   }>;
 }
 
@@ -310,6 +311,7 @@ export class DatabaseStorage implements IStorage {
     activeProjects: number;
     tasksCreated: number;
     ideasCaptured: number;
+    projectProgress: number;
   }> {
     const userProjects = await db
       .select()
@@ -326,10 +328,14 @@ export class DatabaseStorage implements IStorage {
     
     const totalTasks = userIdeas.length;
 
+    // Calculate overall project progress
+    const projectProgress = await this.getOverallProjectProgress(userId);
+
     return {
       activeProjects: userProjects.filter(p => p.status === 'active').length,
       tasksCreated: totalTasks,
       ideasCaptured: userIdeas.length,
+      projectProgress,
     };
   }
 
@@ -516,6 +522,42 @@ export class DatabaseStorage implements IStorage {
     const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
     return { total, completed, percentage };
+  }
+
+  // Calculate overall project progress based on all todolists
+  async getOverallProjectProgress(userId: string): Promise<number> {
+    // Get all user's projects
+    const userProjects = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(eq(projects.userId, userId));
+
+    if (userProjects.length === 0) return 0;
+
+    const projectIds = userProjects.map(p => p.id);
+    
+    // Get all todolists for user's projects
+    const allTodoLists = await db
+      .select({ id: todoLists.id })
+      .from(todoLists)
+      .where(and(
+        inArray(todoLists.projectId, projectIds),
+        eq(todoLists.userId, userId)
+      ));
+
+    if (allTodoLists.length === 0) return 0;
+
+    // Calculate progress for each todolist and aggregate
+    let totalTasks = 0;
+    let completedTasks = 0;
+
+    for (const todoList of allTodoLists) {
+      const progress = await this.getTodoListProgress(todoList.id);
+      totalTasks += progress.total;
+      completedTasks += progress.completed;
+    }
+
+    return totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   }
 
   // Bulk task operations

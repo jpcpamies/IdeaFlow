@@ -77,10 +77,12 @@ export default function Dashboard() {
     activeProjects: 0,
     tasksCreated: 0,
     ideasCaptured: 0,
+    projectProgress: 0,
   } } = useQuery<{
     activeProjects: number;
     tasksCreated: number;
     ideasCaptured: number;
+    projectProgress: number;
   }>({
     queryKey: ["/api/stats"],
     enabled: isAuthenticated,
@@ -382,7 +384,7 @@ export default function Dashboard() {
       {/* Dashboard Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           <Card className="bg-white shadow-sm border border-gray-100">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -421,6 +423,20 @@ export default function Dashboard() {
                   </p>
                 </div>
                 <CheckCircle className="text-accent w-8 h-8" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-white shadow-sm border border-gray-100">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-muted-foreground text-sm">Project Progress</p>
+                  <p className="text-2xl font-bold text-gray-900" data-testid="text-project-progress">
+                    {stats.projectProgress}% Progress
+                  </p>
+                </div>
+                <Target className="text-emerald-500 w-8 h-8" />
               </div>
             </CardContent>
           </Card>
