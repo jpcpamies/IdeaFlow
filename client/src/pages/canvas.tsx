@@ -180,6 +180,35 @@ export default function Canvas() {
   const [selectedTasks, setSelectedTasks] = useState<Set<string>>(new Set());
   const [bulkActionMode, setBulkActionMode] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  
+  // TodoList collapse states with localStorage persistence
+  const [collapsedTodoLists, setCollapsedTodoLists] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('collapsedTodoLists');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Toggle TodoList collapse state and save to localStorage
+  const toggleTodoListCollapse = (todoListId: string) => {
+    setCollapsedTodoLists(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(todoListId)) {
+        newSet.delete(todoListId);
+      } else {
+        newSet.add(todoListId);
+      }
+      // Save to localStorage
+      try {
+        localStorage.setItem('collapsedTodoLists', JSON.stringify(Array.from(newSet)));
+      } catch (error) {
+        console.warn('Failed to save collapsed state to localStorage:', error);
+      }
+      return newSet;
+    });
+  };
   const [editingTaskTitle, setEditingTaskTitle] = useState("");
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionTitle, setEditingSectionTitle] = useState("");
@@ -4720,16 +4749,37 @@ export default function Canvas() {
                 const isExpanded = expandedSidebarTodoLists.has(todoList.id);
                 const shouldShowSections = globalPriorityFilter !== 'all' && sectionsWithTasks.length > 0;
                 
+                const isCollapsed = collapsedTodoLists.has(todoList.id);
+
                 return (
                   <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center space-x-2 flex-1">
+                      <div 
+                        className="flex items-center space-x-2 flex-1 cursor-pointer hover:bg-gray-100 rounded px-2 py-1 -mx-2 -my-1 transition-colors"
+                        onClick={() => toggleTodoListCollapse(todoList.id)}
+                        title={isCollapsed ? "Expand tasks" : "Collapse tasks"}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-5 w-5 p-0 hover:bg-gray-200"
+                          data-testid={`button-toggle-collapse-todolist-${todoList.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleTodoListCollapse(todoList.id);
+                          }}
+                        >
+                          {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </Button>
                         <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
-                        {shouldShowSections && (
+                        {shouldShowSections && !isCollapsed && (
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => toggleSidebarTodoList(todoList.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSidebarTodoList(todoList.id);
+                            }}
                             className="h-5 w-5 p-0 hover:bg-gray-200"
                             title={isExpanded ? "Collapse sections" : "Expand sections"}
                             data-testid={`button-toggle-sidebar-todolist-${todoList.id}`}
@@ -4771,88 +4821,93 @@ export default function Canvas() {
                       return null;
                     })()}
                     
-                    {/* Section Preview Structure when priority filter is active */}
-                    {shouldShowSections && isExpanded ? (
-                      <div className="space-y-3">
-                        {sectionsWithTasks.map(section => (
-                          <div key={section.id} className="border-l-2 border-gray-300 pl-3">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <span className="text-xs text-gray-600">📁</span>
-                              <span className="text-xs font-medium text-gray-700">{section.name}</span>
-                              <span className="text-xs text-gray-500">
-                                ({section.taskCount} {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority task{section.taskCount !== 1 ? 's' : ''})
-                              </span>
-                            </div>
+                    {/* Tasks Content - Hidden when collapsed */}
+                    {!isCollapsed && (
+                      <>
+                        {/* Section Preview Structure when priority filter is active */}
+                        {shouldShowSections && isExpanded ? (
+                          <div className="space-y-3">
+                            {sectionsWithTasks.map(section => (
+                              <div key={section.id} className="border-l-2 border-gray-300 pl-3">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <span className="text-xs text-gray-600">📁</span>
+                                  <span className="text-xs font-medium text-gray-700">{section.name}</span>
+                                  <span className="text-xs text-gray-500">
+                                    ({section.taskCount} {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority task{section.taskCount !== 1 ? 's' : ''})
+                                  </span>
+                                </div>
+                              </div>
+                            ))}
+                            
+                            {/* Show unsectioned tasks if any */}
+                            {displayUnsectionedTasks.length > 0 && (
+                              <div className="border-l-2 border-gray-300 pl-3">
+                                <div className="flex items-center space-x-2 mb-1">
+                                  <span className="text-xs text-gray-600">📄</span>
+                                  <span className="text-xs font-medium text-gray-700">Unsectioned</span>
+                                  <span className="text-xs text-gray-500">
+                                    ({displayUnsectionedTasks.length} task{displayUnsectionedTasks.length !== 1 ? 's' : ''})
+                                  </span>
+                                </div>
+                              </div>
+                            )}
                           </div>
-                        ))}
-                        
-                        {/* Show unsectioned tasks if any */}
-                        {displayUnsectionedTasks.length > 0 && (
-                          <div className="border-l-2 border-gray-300 pl-3">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <span className="text-xs text-gray-600">📄</span>
-                              <span className="text-xs font-medium text-gray-700">Unsectioned</span>
-                              <span className="text-xs text-gray-500">
-                                ({displayUnsectionedTasks.length} task{displayUnsectionedTasks.length !== 1 ? 's' : ''})
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    ) : !shouldShowSections ? (
-                      /* Standard task display when no priority filter or no sections */
-                      <div className="space-y-2">
-                        {currentTodoListTasks.length === 0 ? (
-                          <div className="text-center py-2">
-                            <p className="text-xs text-gray-500">No tasks</p>
+                        ) : !shouldShowSections ? (
+                          /* Standard task display when no priority filter or no sections */
+                          <div className="space-y-2">
+                            {currentTodoListTasks.length === 0 ? (
+                              <div className="text-center py-2">
+                                <p className="text-xs text-gray-500">No tasks</p>
+                              </div>
+                            ) : (
+                              (globalPriorityFilter === 'all' ? currentTodoListTasks : currentTodoListTasks.filter(task => (task.priority || 3) === parseInt(globalPriorityFilter)))
+                              .slice(0, 3) // Show only first 3 tasks to save space
+                              .map((task: Task) => (
+                                <div 
+                                  key={task.id} 
+                                  className="flex items-start space-x-2 group"
+                                  data-testid={`task-${task.id}`}
+                                >
+                                  <Checkbox
+                                    checked={Boolean(task.completed)}
+                                    onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
+                                    className="mt-0.5"
+                                    data-testid={`checkbox-task-${task.id}`}
+                                  />
+                                  <span 
+                                    className={`text-sm flex-1 ${
+                                      task.completed 
+                                        ? 'line-through text-gray-400' 
+                                        : 'text-gray-700'
+                                    }`}
+                                  >
+                                    {task.title}
+                                  </span>
+                                </div>
+                              ))
+                            )}
+                            {currentTodoListTasks.length > 3 && (
+                              <div className="text-xs text-gray-500 text-center">
+                                +{currentTodoListTasks.length - 3} more tasks
+                              </div>
+                            )}
                           </div>
                         ) : (
-                          (globalPriorityFilter === 'all' ? currentTodoListTasks : currentTodoListTasks.filter(task => (task.priority || 3) === parseInt(globalPriorityFilter)))
-                          .slice(0, 3) // Show only first 3 tasks to save space
-                          .map((task: Task) => (
-                            <div 
-                              key={task.id} 
-                              className="flex items-start space-x-2 group"
-                              data-testid={`task-${task.id}`}
-                            >
-                              <Checkbox
-                                checked={Boolean(task.completed)}
-                                onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
-                                className="mt-0.5"
-                                data-testid={`checkbox-task-${task.id}`}
-                              />
-                              <span 
-                                className={`text-sm flex-1 ${
-                                  task.completed 
-                                    ? 'line-through text-gray-400' 
-                                    : 'text-gray-700'
-                                }`}
-                              >
-                                {task.title}
-                              </span>
-                            </div>
-                          ))
-                        )}
-                        {currentTodoListTasks.length > 3 && (
-                          <div className="text-xs text-gray-500 text-center">
-                            +{currentTodoListTasks.length - 3} more tasks
+                          /* Collapsed state - show summary */
+                          <div className="text-xs text-gray-600">
+                            {sectionsWithTasks.length} section{sectionsWithTasks.length !== 1 ? 's' : ''} with {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority tasks
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      /* Collapsed state - show summary */
-                      <div className="text-xs text-gray-600">
-                        {sectionsWithTasks.length} section{sectionsWithTasks.length !== 1 ? 's' : ''} with {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority tasks
-                      </div>
-                    )}
-                    
-                    {totalCount > 0 && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
-                        <div className="text-xs text-gray-500">
-                          {completedCount} of {totalCount} completed
-                          {globalPriorityFilter !== 'all' && ` (${globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority only)`}
-                        </div>
-                      </div>
+                        
+                        {totalCount > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <div className="text-xs text-gray-500">
+                              {completedCount} of {totalCount} completed
+                              {globalPriorityFilter !== 'all' && ` (${globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority only)`}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 );
