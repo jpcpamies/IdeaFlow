@@ -3748,12 +3748,7 @@ export default function Canvas() {
                       ? '0 0 0 3px rgba(59, 130, 246, 0.4), 0 12px 20px -5px rgba(0, 0, 0, 0.15), 0 0 15px rgba(59, 130, 246, 0.2)'
                       : isUngrouped 
                         ? '0 2px 6px rgba(0, 0, 0, 0.1)'
-                        : undefined,
-                    ...(isUngrouped && {
-                      backgroundImage: 'radial-gradient(circle, #E2E8F0 2px, transparent 2px)',
-                      backgroundSize: '20px 20px',
-                      backgroundPosition: '0 0'
-                    })
+                        : undefined
                   }}
                   onClick={(e) => handleCardClick(idea.id, e)}
                   onMouseDown={(e) => handleMouseDown(e, idea.id)}
@@ -3822,7 +3817,7 @@ export default function Canvas() {
                     }}>
                       {idea.description}
                     </p>
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-start">
                       {group ? (
                         <Badge 
                           variant="outline" 
@@ -3837,9 +3832,6 @@ export default function Canvas() {
                           Unassigned
                         </Badge>
                       )}
-                      <div className={`w-2 h-2 rounded-full ${
-                        isUngrouped ? 'bg-gray-300' : 'bg-white/40'
-                      }`}></div>
                     </div>
                   </CardContent>
                 </Card>
