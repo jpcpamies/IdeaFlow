@@ -980,10 +980,20 @@ export default function Canvas() {
       }
       return response.json();
     },
-    onSuccess: (todoList) => {
+    onSuccess: async (todoList) => {
       console.log('TodoList created successfully:', todoList);
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', { projectId }] });
-      queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Comprehensive cache invalidation to ensure tasks are visible immediately
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists', { projectId }] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists'] });
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Force immediate refetch of all tasks to ensure sidebar updates
+      await queryClient.refetchQueries({ queryKey: ['/api/todolists', 'tasks'] });
+      
+      // Also invalidate specific todoList tasks
+      await queryClient.invalidateQueries({ queryKey: ['/api/todolists', todoList.id, 'tasks'] });
+      
       // Automatically open the tasks sidebar to show the new todo list
       setIsRightSidebarOpen(true);
     },
