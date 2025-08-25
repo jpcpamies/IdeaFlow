@@ -3796,9 +3796,9 @@ export default function Canvas() {
                     <h3 className={`mb-2 pr-8 ${
                       isUngrouped 
                         ? 'text-base font-semibold' 
-                        : 'font-semibold text-sm'
+                        : 'font-semibold text-sm text-white'
                     }`} style={{
-                      color: isUngrouped ? '#1E293B' : undefined,
+                      color: isUngrouped ? '#1E293B' : '#FFFFFF',
                       fontFamily: isUngrouped ? 'sans-serif' : undefined,
                       fontSize: isUngrouped ? '16px' : undefined,
                       fontWeight: isUngrouped ? '600' : undefined
@@ -3808,9 +3808,9 @@ export default function Canvas() {
                     <p className={`leading-relaxed mb-3 ${
                       isUngrouped 
                         ? 'text-sm' 
-                        : 'text-xs text-gray-600'
+                        : 'text-xs text-white'
                     }`} style={{
-                      color: isUngrouped ? '#475569' : undefined,
+                      color: isUngrouped ? '#475569' : '#FFFFFF',
                       fontFamily: isUngrouped ? 'sans-serif' : undefined,
                       fontSize: isUngrouped ? '14px' : undefined,
                       fontWeight: isUngrouped ? '400' : undefined
@@ -3821,7 +3821,7 @@ export default function Canvas() {
                       {group ? (
                         <Badge 
                           variant="outline" 
-                          className="text-xs border-white/30 bg-white/20"
+                          className="text-xs border-white/30 bg-white/20 text-white"
                         >
                           {group.name}
                         </Badge>
