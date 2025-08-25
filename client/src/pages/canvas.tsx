@@ -3699,7 +3699,14 @@ export default function Canvas() {
             }`}
             onMouseDown={handleCanvasPanStart}
             onClick={handleCanvasClick}
-            style={{ touchAction: 'none' }}
+            style={{ 
+              touchAction: 'none',
+              backgroundColor: '#FFFFFF',
+              backgroundImage: 'radial-gradient(circle, #E2E8F0 2px, transparent 2px)',
+              backgroundSize: `${20 / (zoomLevel / 100)}px ${20 / (zoomLevel / 100)}px`,
+              backgroundPosition: '0 0',
+              transition: 'background-size 0.2s ease-out'
+            }}
           >
             {/* Inner canvas with pan and zoom transforms */}
             <div
