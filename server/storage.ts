@@ -296,6 +296,13 @@ export class DatabaseStorage implements IStorage {
     await db.delete(tasks).where(eq(tasks.id, id));
   }
 
+  async deleteTasksByIdeaId(ideaId: string): Promise<number> {
+    const result = await db
+      .delete(tasks)
+      .where(eq(tasks.ideaId, ideaId));
+    return result.rowCount || 0;
+  }
+
   // Statistics
   async getUserStats(userId: string): Promise<{
     activeProjects: number;

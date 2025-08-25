@@ -320,8 +320,81 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       const updates = insertIdeaSchema.partial().parse(requestData);
+      
+      // Check if groupId is changing to trigger task migration
+      const oldGroupId = idea.groupId;
+      const newGroupId = updates.groupId !== undefined ? updates.groupId : oldGroupId;
+      const isGroupChanging = oldGroupId !== newGroupId;
+      
+      // Update the idea first
       const updatedIdea = await storage.updateIdea(req.params.id, updates);
-      res.json(updatedIdea);
+      
+      // Handle task synchronization based on group changes
+      if (isGroupChanging) {
+        if (newGroupId !== null) {
+          // Moving to a new group - migrate tasks to the new group's TodoList
+          try {
+            console.log(`Group changed for idea ${req.params.id}: ${oldGroupId} → ${newGroupId}. Migrating tasks...`);
+            const migrationResult = await storage.moveTasksToGroup([req.params.id], newGroupId);
+            console.log(`Moved ${migrationResult.moved} existing tasks for idea ${req.params.id} to TodoList ${newGroupId}`);
+            
+            // Include migration info in the response
+            res.json({
+              ...updatedIdea,
+              _migration: {
+                tasksMoved: migrationResult.moved,
+                fromGroupId: oldGroupId,
+                toGroupId: newGroupId,
+                migrationDetails: migrationResult.details
+              }
+            });
+          } catch (migrationError) {
+            console.error(`Error migrating tasks for idea ${req.params.id}:`, migrationError);
+            // Still return the updated idea even if task migration fails
+            res.json({
+              ...updatedIdea,
+              _migration: {
+                error: "Task migration failed",
+                tasksMoved: 0,
+                fromGroupId: oldGroupId,
+                toGroupId: newGroupId
+              }
+            });
+          }
+        } else {
+          // Moving to ungrouped (null group) - delete associated tasks since they can't exist without a TodoList
+          try {
+            console.log(`Idea ${req.params.id} moved to ungrouped. Deleting associated tasks...`);
+            const deletedTasks = await storage.deleteTasksByIdeaId(req.params.id);
+            console.log(`Deleted ${deletedTasks} tasks associated with ungrouped idea ${req.params.id}`);
+            
+            res.json({
+              ...updatedIdea,
+              _migration: {
+                tasksDeleted: deletedTasks,
+                fromGroupId: oldGroupId,
+                toGroupId: null,
+                reason: "Tasks deleted because idea moved to ungrouped state"
+              }
+            });
+          } catch (deletionError) {
+            console.error(`Error deleting tasks for ungrouped idea ${req.params.id}:`, deletionError);
+            res.json({
+              ...updatedIdea,
+              _migration: {
+                error: "Task deletion failed",
+                tasksDeleted: 0,
+                fromGroupId: oldGroupId,
+                toGroupId: null
+              }
+            });
+          }
+        }
+      } else {
+        // No group change, just return updated idea
+        res.json(updatedIdea);
+      }
+      
     } catch (error) {
       if (error instanceof z.ZodError) {
         return res.status(400).json({ message: "Invalid update data", errors: error.errors });
