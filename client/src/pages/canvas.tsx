@@ -159,6 +159,16 @@ export default function Canvas() {
   });
   const [exportFormat, setExportFormat] = useState<'markdown' | 'csv' | 'pdf'>('markdown');
   
+  // Bulk export functionality states
+  const [isBulkExportModalOpen, setIsBulkExportModalOpen] = useState(false);
+  const [selectedTodoListsForExport, setSelectedTodoListsForExport] = useState<Set<string>>(new Set());
+  const [bulkExportPriorities, setBulkExportPriorities] = useState({
+    high: true,
+    medium: true,
+    low: true
+  });
+  const [bulkExportFormat, setBulkExportFormat] = useState<'markdown' | 'csv' | 'pdf'>('markdown');
+  
   // TodoList management states
   const [editingTodoListId, setEditingTodoListId] = useState<string | null>(null);
   const [editingTodoListTitle, setEditingTodoListTitle] = useState('');
@@ -1496,6 +1506,218 @@ export default function Canvas() {
     }
     
     setIsExportModalOpen(false);
+  };
+
+  // Bulk export functionality
+  const getBulkSelectedPriorities = () => {
+    const priorities = [];
+    if (bulkExportPriorities.high) priorities.push(1);
+    if (bulkExportPriorities.medium) priorities.push(2);
+    if (bulkExportPriorities.low) priorities.push(3);
+    return priorities;
+  };
+
+  const toggleAllTodoListsSelection = () => {
+    if (selectedTodoListsForExport.size === todoLists.length) {
+      // Deselect all
+      setSelectedTodoListsForExport(new Set());
+    } else {
+      // Select all
+      setSelectedTodoListsForExport(new Set(todoLists.map((tl: TodoList) => tl.id)));
+    }
+  };
+
+  const toggleTodoListSelection = (todoListId: string) => {
+    setSelectedTodoListsForExport(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(todoListId)) {
+        newSet.delete(todoListId);
+      } else {
+        newSet.add(todoListId);
+      }
+      return newSet;
+    });
+  };
+
+  const getBulkFilteredTasksForExport = () => {
+    const selectedPriorities = getBulkSelectedPriorities();
+    const selectedTodoListIds = Array.from(selectedTodoListsForExport);
+    
+    const exportData = selectedTodoListIds.map(todoListId => {
+      const todoList = todoLists.find((tl: TodoList) => tl.id === todoListId);
+      if (!todoList) return null;
+
+      const todoListTasks = allTasks.filter((task: Task) => task.todoListId === todoListId);
+      const todoListSectionsData = allSections.filter(section => section.todoListId === todoListId);
+      
+      const filteredTasks = todoListTasks.filter((task: Task) => {
+        const taskPriority = task.priority || 3;
+        return selectedPriorities.includes(taskPriority);
+      });
+
+      const sectionsForExport = todoListSectionsData
+        .sort((a: Section, b: Section) => (a.orderIndex || 0) - (b.orderIndex || 0))
+        .map(section => {
+          const sectionTasks = filteredTasks
+            .filter((task: Task) => task.sectionId === section.id)
+            .sort((a: Task, b: Task) => (a.orderIndex || 0) - (b.orderIndex || 0));
+          
+          return {
+            ...section,
+            tasks: sectionTasks
+          };
+        });
+
+      const unsectionedTasks = filteredTasks
+        .filter((task: Task) => !task.sectionId)
+        .sort((a: Task, b: Task) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+      return {
+        todoList,
+        sections: sectionsForExport,
+        unsectionedTasks
+      };
+    }).filter(data => data !== null);
+
+    return exportData;
+  };
+
+  const generateBulkMarkdownExport = () => {
+    const exportData = getBulkFilteredTasksForExport();
+    const selectedPriorityLabels = [];
+    if (bulkExportPriorities.high) selectedPriorityLabels.push('High Priority');
+    if (bulkExportPriorities.medium) selectedPriorityLabels.push('Medium Priority');
+    if (bulkExportPriorities.low) selectedPriorityLabels.push('Low Priority');
+    
+    const allTasks = exportData.flatMap(data => [...data.sections.flatMap(s => s.tasks), ...data.unsectionedTasks]);
+    const completedCount = allTasks.filter((t: Task) => t.completed).length;
+    const pendingCount = allTasks.length - completedCount;
+    
+    let markdown = `# ${currentProject ? `${currentProject.name} - ` : ''}Task Export\n`;
+    markdown += `**Export Date:** ${new Date().toLocaleString()}\n`;
+    markdown += `**Priority Filter:** ${selectedPriorityLabels.join(', ')}\n`;
+    markdown += `**TodoLists Exported:** ${exportData.map(data => data.todoList.name).join(', ')}\n\n`;
+    
+    // Export each TodoList
+    for (const { todoList, sections, unsectionedTasks } of exportData) {
+      markdown += `## ${todoList.name}\n\n`;
+      
+      // Export sections
+      for (const section of sections) {
+        if (section.tasks.length > 0) {
+          markdown += `### ${section.name}\n`;
+          for (const task of section.tasks) {
+            const checkbox = task.completed ? '[x]' : '[ ]';
+            const priorityLabel = getPriorityLabel(task.priority);
+            markdown += `- ${checkbox} ${task.title} (${priorityLabel})\n`;
+          }
+          markdown += '\n';
+        }
+      }
+      
+      // Export unsectioned tasks
+      if (unsectionedTasks.length > 0) {
+        markdown += `### Unsectioned Tasks\n`;
+        for (const task of unsectionedTasks) {
+          const checkbox = task.completed ? '[x]' : '[ ]';
+          const priorityLabel = getPriorityLabel(task.priority);
+          markdown += `- ${checkbox} ${task.title} (${priorityLabel})\n`;
+        }
+        markdown += '\n';
+      }
+      
+      markdown += `---\n\n`;
+    }
+    
+    markdown += `**Export Summary:** ${exportData.length} TodoList${exportData.length !== 1 ? 's' : ''}, ${allTasks.length} total tasks (${completedCount} completed, ${pendingCount} pending)\n`;
+    
+    return markdown;
+  };
+
+  const generateBulkCSVExport = () => {
+    const exportData = getBulkFilteredTasksForExport();
+    const allTasks = exportData.flatMap(data => [
+      ...data.sections.flatMap(s => s.tasks.map((t: Task) => ({ ...t, todoListName: data.todoList.name, sectionName: s.name }))),
+      ...data.unsectionedTasks.map((t: Task) => ({ ...t, todoListName: data.todoList.name, sectionName: 'Unsectioned' }))
+    ]);
+    
+    let csv = 'TodoList,Section,Task,Priority,Completed,Date\n';
+    
+    for (const task of allTasks) {
+      const todoListName = task.todoListName || 'Unknown';
+      const sectionName = task.sectionName || 'Unsectioned';
+      const priorityLabel = getPriorityLabel(task.priority);
+      const completedStatus = task.completed ? 'Yes' : 'No';
+      const exportDate = new Date().toLocaleDateString();
+      
+      // Escape CSV values
+      const escapeCSV = (value: string) => {
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+          return `"${value.replace(/"/g, '""')}"`;
+        }
+        return value;
+      };
+      
+      csv += `${escapeCSV(todoListName)},${escapeCSV(sectionName)},${escapeCSV(task.title)},${escapeCSV(priorityLabel)},${escapeCSV(completedStatus)},${escapeCSV(exportDate)}\n`;
+    }
+    
+    return csv;
+  };
+
+  const handleBulkExport = () => {
+    const selectedPriorities = getBulkSelectedPriorities();
+    if (selectedPriorities.length === 0) {
+      alert('Please select at least one priority level to export.');
+      return;
+    }
+
+    if (selectedTodoListsForExport.size === 0) {
+      alert('Please select at least one TodoList to export.');
+      return;
+    }
+    
+    const timestamp = new Date().toISOString().split('T')[0];
+    const projectName = currentProject ? currentProject.name.replace(/[^a-zA-Z0-9]/g, '_') : 'Project';
+    
+    switch (bulkExportFormat) {
+      case 'markdown':
+        const markdownContent = generateBulkMarkdownExport();
+        downloadFile(markdownContent, `${projectName}_Export_${timestamp}.md`, 'text/markdown');
+        break;
+      case 'csv':
+        const csvContent = generateBulkCSVExport();
+        downloadFile(csvContent, `${projectName}_Export_${timestamp}.csv`, 'text/csv');
+        break;
+      case 'pdf':
+        // For now, we'll generate HTML content and let the user print to PDF
+        const htmlContent = generateBulkMarkdownExport()
+          .replace(/\n/g, '<br>')
+          .replace(/### (.*)/g, '<h3>$1</h3>')
+          .replace(/## (.*)/g, '<h2>$1</h2>')
+          .replace(/# (.*)/g, '<h1>$1</h1>');
+        const printWindow = window.open('', '_blank');
+        if (printWindow) {
+          printWindow.document.write(`
+            <html>
+              <head>
+                <title>${projectName} - Task Export</title>
+                <style>
+                  body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+                  h1 { color: #333; border-bottom: 2px solid #333; }
+                  h2 { color: #666; border-bottom: 1px solid #ccc; margin-top: 30px; }
+                  h3 { color: #888; margin-top: 20px; }
+                </style>
+              </head>
+              <body>${htmlContent}</body>
+            </html>
+          `);
+          printWindow.document.close();
+          printWindow.print();
+        }
+        break;
+    }
+    
+    setIsBulkExportModalOpen(false);
   };
 
   const reorderTaskMutation = useMutation({
@@ -4337,20 +4559,37 @@ export default function Canvas() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-3">
               <h2 className="font-semibold text-gray-900">To-Do Lists</h2>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-                data-testid="button-toggle-sidebar"
-              >
-                {isRightSidebarOpen ? (
-                  <ChevronRight className="w-4 h-4" />
-                ) : (
-                  <ChevronLeft className="w-4 h-4" />
-                )}
-              </Button>
+              <div className="flex space-x-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    // Initialize all TodoLists as selected
+                    setSelectedTodoListsForExport(new Set(todoLists.map((tl: TodoList) => tl.id)));
+                    setIsBulkExportModalOpen(true);
+                  }}
+                  className="h-8 w-8 p-0"
+                  data-testid="button-bulk-export"
+                  title="Export Tasks from Multiple TodoLists"
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+                  className="h-8 w-8 p-0"
+                  data-testid="button-toggle-sidebar"
+                >
+                  {isRightSidebarOpen ? (
+                    <ChevronRight className="w-4 h-4" />
+                  ) : (
+                    <ChevronLeft className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -5506,6 +5745,132 @@ export default function Canvas() {
             >
               <Download className="w-4 h-4 mr-2" />
               Export
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Export Options Modal */}
+      <Dialog open={isBulkExportModalOpen} onOpenChange={setIsBulkExportModalOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Export Tasks from Multiple TodoLists</DialogTitle>
+            <DialogDescription>
+              Select TodoLists and priority levels to export from "{currentProject?.name || 'this project'}".
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6 max-h-96 overflow-y-auto">
+            {/* TodoList Selection */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium">Select TodoLists:</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleAllTodoListsSelection}
+                  className="text-xs"
+                  data-testid="button-toggle-all-todolists"
+                >
+                  {selectedTodoListsForExport.size === todoLists.length ? 'Deselect All' : 'Select All'}
+                </Button>
+              </div>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {todoLists.map((todoList: TodoList) => {
+                  const todoListTaskCount = allTasks.filter((task: Task) => task.todoListId === todoList.id).length;
+                  return (
+                    <div key={todoList.id} className="flex items-center space-x-2">
+                      <Checkbox
+                        checked={selectedTodoListsForExport.has(todoList.id)}
+                        onCheckedChange={() => toggleTodoListSelection(todoList.id)}
+                        id={`bulk-export-${todoList.id}`}
+                        data-testid={`checkbox-bulk-export-todolist-${todoList.id}`}
+                      />
+                      <label htmlFor={`bulk-export-${todoList.id}`} className="text-sm flex-1">
+                        {todoList.name} <span className="text-gray-500">({todoListTaskCount} task{todoListTaskCount !== 1 ? 's' : ''})</span>
+                      </label>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Priority Selection */}
+            <div>
+              <h4 className="text-sm font-medium mb-3">Select Priority Levels:</h4>
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={bulkExportPriorities.high}
+                    onCheckedChange={(checked) => 
+                      setBulkExportPriorities(prev => ({ ...prev, high: !!checked }))
+                    }
+                    id="bulk-export-high"
+                    data-testid="checkbox-bulk-export-high-priority"
+                  />
+                  <label htmlFor="bulk-export-high" className="text-sm text-red-600 font-medium">
+                    High Priority Tasks
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={bulkExportPriorities.medium}
+                    onCheckedChange={(checked) => 
+                      setBulkExportPriorities(prev => ({ ...prev, medium: !!checked }))
+                    }
+                    id="bulk-export-medium"
+                    data-testid="checkbox-bulk-export-medium-priority"
+                  />
+                  <label htmlFor="bulk-export-medium" className="text-sm text-yellow-600 font-medium">
+                    Medium Priority Tasks
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    checked={bulkExportPriorities.low}
+                    onCheckedChange={(checked) => 
+                      setBulkExportPriorities(prev => ({ ...prev, low: !!checked }))
+                    }
+                    id="bulk-export-low"
+                    data-testid="checkbox-bulk-export-low-priority"
+                  />
+                  <label htmlFor="bulk-export-low" className="text-sm text-green-600 font-medium">
+                    Low Priority Tasks
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Format Selection */}
+            <div>
+              <h4 className="text-sm font-medium mb-3">Export Format:</h4>
+              <Select value={bulkExportFormat} onValueChange={(value: 'markdown' | 'csv' | 'pdf') => setBulkExportFormat(value)}>
+                <SelectTrigger data-testid="select-bulk-export-format">
+                  <SelectValue placeholder="Select format" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="markdown">Markdown (.md)</SelectItem>
+                  <SelectItem value="csv">CSV (.csv)</SelectItem>
+                  <SelectItem value="pdf">PDF (Print)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsBulkExportModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleBulkExport}
+              disabled={
+                selectedTodoListsForExport.size === 0 || 
+                (!bulkExportPriorities.high && !bulkExportPriorities.medium && !bulkExportPriorities.low)
+              }
+              data-testid="button-bulk-export-confirm"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Export {selectedTodoListsForExport.size} TodoList{selectedTodoListsForExport.size !== 1 ? 's' : ''}
             </Button>
           </DialogFooter>
         </DialogContent>
