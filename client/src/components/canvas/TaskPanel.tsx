@@ -27,7 +27,7 @@ interface TaskPanelProps {
   onToggle: () => void;
   tasks: Task[];
   isLoading?: boolean;
-  onTaskToggle: (taskId: string, isCompleted: boolean) => void;
+  onTaskToggle: (taskId: string, completed: boolean) => void;
   onAddTask: () => void;
   onConvertToTasks?: () => void;
   onDeleteTask?: (taskId: string) => void;
@@ -50,45 +50,30 @@ export default function TaskPanel({
   const [filter, setFilter] = useState<'all' | 'pending' | 'completed'>('all');
   const [sortBy, setSortBy] = useState<'created' | 'priority' | 'status'>('created');
 
-  const getPriorityBadge = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return <Badge className="bg-red-100 text-red-800 hover:bg-red-100 text-xs">High</Badge>;
-      case 'medium':
-        return <Badge className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100 text-xs">Medium</Badge>;
-      case 'low':
-        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-100 text-xs">Low</Badge>;
-      default:
-        return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100 text-xs">Normal</Badge>;
-    }
-  };
 
   const getStatusBadge = (task: Task) => {
-    if (task.isCompleted) {
+    if (task.completed) {
       return <Badge className="bg-green-100 text-green-800 hover:bg-green-100 text-xs">Completed</Badge>;
     }
-    return getPriorityBadge(task.priority);
+    return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-100 text-xs">Pending</Badge>;
   };
 
   const filteredTasks = tasks.filter(task => {
-    if (filter === 'pending') return !task.isCompleted;
-    if (filter === 'completed') return task.isCompleted;
+    if (filter === 'pending') return !task.completed;
+    if (filter === 'completed') return task.completed;
     return true;
   });
 
   const sortedTasks = [...filteredTasks].sort((a, b) => {
     switch (sortBy) {
-      case 'priority':
-        const priorityOrder = { high: 3, medium: 2, low: 1 };
-        return priorityOrder[b.priority as keyof typeof priorityOrder] - priorityOrder[a.priority as keyof typeof priorityOrder];
       case 'status':
-        return Number(a.isCompleted) - Number(b.isCompleted);
+        return Number(a.completed) - Number(b.completed);
       default:
         return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
     }
   });
 
-  const completedTasks = tasks.filter(task => task.isCompleted).length;
+  const completedTasks = tasks.filter(task => task.completed).length;
   const progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : 0;
 
   return (
@@ -159,9 +144,6 @@ export default function TaskPanel({
               <DropdownMenuItem onClick={() => setSortBy('created')}>
                 By Date Created
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setSortBy('priority')}>
-                By Priority
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setSortBy('status')}>
                 By Status
               </DropdownMenuItem>
@@ -205,7 +187,7 @@ export default function TaskPanel({
                 <CardContent className="p-3">
                   <div className="flex items-start space-x-3">
                     <Checkbox
-                      checked={task.isCompleted || false}
+                      checked={task.completed || false}
                       onCheckedChange={(checked) => onTaskToggle(task.id, !!checked)}
                       className="mt-1"
                       data-testid={`checkbox-task-${task.id}`}
@@ -214,17 +196,10 @@ export default function TaskPanel({
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <p className={`text-sm font-medium text-gray-900 ${
-                            task.isCompleted ? 'line-through opacity-60' : ''
+                            task.completed ? 'line-through opacity-60' : ''
                           }`} data-testid={`text-task-title-${task.id}`}>
                             {task.title}
                           </p>
-                          {task.description && (
-                            <p className={`text-xs text-muted-foreground mt-1 ${
-                              task.isCompleted ? 'opacity-60' : ''
-                            }`} data-testid={`text-task-description-${task.id}`}>
-                              {task.description}
-                            </p>
-                          )}
                         </div>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -256,11 +231,6 @@ export default function TaskPanel({
                       </div>
                       <div className="flex items-center space-x-2 mt-2">
                         {getStatusBadge(task)}
-                        {task.estimatedTime && (
-                          <span className="text-xs text-muted-foreground">
-                            {task.estimatedTime}
-                          </span>
-                        )}
                       </div>
                     </div>
                   </div>

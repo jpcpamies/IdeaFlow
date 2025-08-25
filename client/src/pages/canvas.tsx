@@ -3994,29 +3994,35 @@ export default function Canvas() {
                     </div>
                     
                     <div className="space-y-2">
-                      {todoListTasks.map((task: Task) => (
-                        <div 
-                          key={task.id} 
-                          className="flex items-start space-x-2 group"
-                          data-testid={`task-${task.id}`}
-                        >
-                          <Checkbox
-                            checked={Boolean(task.completed)}
-                            onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
-                            className="mt-0.5"
-                            data-testid={`checkbox-task-${task.id}`}
-                          />
-                          <span 
-                            className={`text-sm flex-1 ${
-                              task.completed 
-                                ? 'line-through text-gray-400' 
-                                : 'text-gray-700'
-                            }`}
-                          >
-                            {task.title}
-                          </span>
+                      {todoListTasks.length === 0 ? (
+                        <div className="text-center py-2">
+                          <p className="text-xs text-gray-500">No tasks</p>
                         </div>
-                      ))}
+                      ) : (
+                        todoListTasks.map((task: Task) => (
+                          <div 
+                            key={task.id} 
+                            className="flex items-start space-x-2 group"
+                            data-testid={`task-${task.id}`}
+                          >
+                            <Checkbox
+                              checked={Boolean(task.completed)}
+                              onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
+                              className="mt-0.5"
+                              data-testid={`checkbox-task-${task.id}`}
+                            />
+                            <span 
+                              className={`text-sm flex-1 ${
+                                task.completed 
+                                  ? 'line-through text-gray-400' 
+                                  : 'text-gray-700'
+                              }`}
+                            >
+                              {task.title}
+                            </span>
+                          </div>
+                        ))
+                      )}
                     </div>
                     
                     {totalCount > 0 && (
