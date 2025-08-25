@@ -143,6 +143,7 @@ export default function Canvas() {
   const [selectedTodoList, setSelectedTodoList] = useState<TodoList | null>(null);
   const [isTodoListModalOpen, setIsTodoListModalOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [priorityFilter, setPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
   
   // TodoList management states
   const [editingTodoListId, setEditingTodoListId] = useState<string | null>(null);
@@ -1194,6 +1195,13 @@ export default function Canvas() {
     });
   };
 
+  // Filter tasks based on priority
+  const filterTasksByPriority = (tasks: Task[]) => {
+    if (priorityFilter === 'all') return tasks;
+    const targetPriority = parseInt(priorityFilter);
+    return tasks.filter(task => (task.priority || 3) === targetPriority);
+  };
+
   const reorderTaskMutation = useMutation({
     mutationFn: async ({ id, orderIndex, sectionId }: { id: string; orderIndex: number; sectionId?: string | null }) => {
       const response = await apiRequest('PATCH', `/api/tasks/${id}/reorder`, { orderIndex, sectionId });
@@ -1476,6 +1484,7 @@ export default function Canvas() {
     setBulkActionMode(false);
     setEditingTodoListId(null);
     setEditingTodoListTitle('');
+    setPriorityFilter('all'); // Reset filter when modal closes
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -4586,6 +4595,29 @@ export default function Canvas() {
               )}
             </DialogTitle>
           </DialogHeader>
+
+          {/* Priority Filter */}
+          <div className="px-6 py-3 border-b border-gray-200">
+            <div className="flex items-center space-x-3">
+              <label className="text-sm font-medium text-gray-700">Show Priority:</label>
+              <Select value={priorityFilter} onValueChange={(value: 'all' | '1' | '2' | '3') => setPriorityFilter(value)}>
+                <SelectTrigger className="w-48 h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-sm">All</SelectItem>
+                  <SelectItem value="1" className="text-sm text-red-600">High Priority Only</SelectItem>
+                  <SelectItem value="2" className="text-sm text-yellow-600">Medium Priority Only</SelectItem>
+                  <SelectItem value="3" className="text-sm text-green-600">Low Priority Only</SelectItem>
+                </SelectContent>
+              </Select>
+              {priorityFilter !== 'all' && (
+                <span className="text-xs text-gray-500">
+                  ({priorityFilter === '1' ? 'High' : priorityFilter === '2' ? 'Medium' : 'Low'} priority filter active)
+                </span>
+              )}
+            </div>
+          </div>
           
           <div className="flex-1 overflow-hidden flex flex-col space-y-4">
             <DndContext
@@ -4624,9 +4656,11 @@ export default function Canvas() {
                   {todoListSections
                     .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
                     .map((section) => {
-                      const sectionTasks = todoListTasks
-                        .filter(task => task.sectionId === section.id)
-                        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                      const sectionTasks = filterTasksByPriority(
+                        todoListTasks
+                          .filter(task => task.sectionId === section.id)
+                          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+                      );
                       
                       const completedTasks = sectionTasks.filter(task => task.completed);
                       const incompleteTasks = sectionTasks.filter(task => !task.completed);
@@ -4671,9 +4705,11 @@ export default function Canvas() {
 
                 {/* Unsectioned Tasks with their own SortableContext */}
                 {(() => {
-                  const unsectionedTasks = todoListTasks
-                    .filter(task => !task.sectionId)
-                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                  const unsectionedTasks = filterTasksByPriority(
+                    todoListTasks
+                      .filter(task => !task.sectionId)
+                      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+                  );
                   
                   const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
                   const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);

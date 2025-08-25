@@ -1,0 +1,59 @@
+Add priority filter system to TodoList modal for task filtering by priority level.
+
+CURRENT STATUS: ✅ 
+Priority system is working with dropdown selection (High/Medium/Low) for individual tasks.
+
+NEW REQUIREMENT:
+Add filtering functionality at the top of the TodoList modal to show only tasks of specific priority levels.
+
+IMPLEMENTATION DETAILS:
+
+1. **Filter UI Position:**
+   - Add filter dropdown at the top of the TodoList modal
+   - Position: Below modal title "1G" and above "Create a new section..." input
+   - Layout: [Filter Label] [Dropdown] aligned to the left side
+
+2. **Filter Dropdown Specifications:**
+   - Label: "Show Priority:"
+   - Options: 
+     * "All" (default - shows all tasks)
+     * "High Priority Only" (shows only priority 1 tasks)
+     * "Medium Priority Only" (shows only priority 2 tasks) 
+     * "Low Priority Only" (shows only priority 3 tasks)
+
+3. **Filtering Logic:**
+   - When filter changes, immediately update visible tasks
+   - Hide/show tasks based on their priority value
+   - Maintain task order within filtered results
+   - No page refresh needed - live filtering
+
+4. **Visual Design:**
+   - Compact select component matching existing UI style
+   - Clear visual indication when filter is active (not "All")
+   - Smooth transition when tasks appear/disappear
+
+5. **Default State:**
+   - Filter starts on "All" (shows all tasks)
+   - Filter state persists within modal session
+   - Reset to "All" when modal reopens
+
+VALIDATION TESTS:
+- Select "High Priority Only" → only priority 1 tasks visible
+- Select "Medium Priority Only" → only priority 2 tasks visible  
+- Select "Low Priority Only" → only priority 3 tasks visible
+- Select "All" → all tasks visible again
+- Verify filtering works with existing priority dropdowns on individual tasks
+
+This prepares the system for future export functionality by priority level.
+🎨 LAYOUT VISUAL ESPERADO
+┌─────────────────────────────────────────────────┐
+│  1G                                       ⋮     │
+├─────────────────────────────────────────────────┤
+│  Show Priority: [All ▼]                         │
+├─────────────────────────────────────────────────┤
+│  Create a new section...                    +   │
+├─────────────────────────────────────────────────┤
+│  [Drag] [Task 1 - High Priority] [High ▼] [⋮]  │
+│  [Drag] [Task 2 - Medium Priority] [Med ▼] [⋮] │
+│  [Drag] [Task 3 - Low Priority] [Low ▼] [⋮]    │
+└─────────────────────────────────────────────────┘
