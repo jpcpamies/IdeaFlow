@@ -4734,47 +4734,82 @@ export default function Canvas() {
                   {todoListSections
                     .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
                     .map((section) => {
-                      const sectionTasks = filterTasksByPriority(
-                        todoListTasks
-                          .filter(task => task.sectionId === section.id)
-                          .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-                      );
+                      // Get all tasks in this section (unfiltered) for context
+                      const allSectionTasks = todoListTasks
+                        .filter(task => task.sectionId === section.id)
+                        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                      
+                      // Apply priority filtering to tasks
+                      const sectionTasks = filterTasksByPriority(allSectionTasks);
                       
                       const completedTasks = sectionTasks.filter(task => task.completed);
                       const incompleteTasks = sectionTasks.filter(task => !task.completed);
                       const isCollapsed = collapsedSections.has(section.id);
+                      
+                      // Check if section is empty due to filtering
+                      const isEmptyDueToFilter = allSectionTasks.length > 0 && sectionTasks.length === 0 && priorityFilter !== 'all';
 
                       return (
                         <SortableSectionItem key={section.id} section={section} sectionTasks={sectionTasks}>
                           {/* Section Tasks with their own SortableContext */}
                           {!isCollapsed && (
-                            <SortableContext 
-                              items={sectionTasks.map(task => `task-${task.id}`)} 
-                              strategy={verticalListSortingStrategy}
-                            >
-                              <div className="space-y-3">
-                                {/* Incomplete Tasks */}
-                                <div className="space-y-2">
-                                  {incompleteTasks.map(task => (
-                                    <SortableTaskItem key={task.id} task={task} />
-                                  ))}
+                            <>
+                              {/* Show empty state message when section is empty due to filtering */}
+                              {isEmptyDueToFilter ? (
+                                <div className="py-6 text-center">
+                                  <div className="text-sm text-gray-500">
+                                    No {priorityFilter === '1' ? 'high' : priorityFilter === '2' ? 'medium' : 'low'} priority tasks in this section
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-1">
+                                    {allSectionTasks.length} task{allSectionTasks.length !== 1 ? 's' : ''} hidden by priority filter
+                                  </div>
                                 </div>
-
-                                {/* Completed Tasks */}
-                                {completedTasks.length > 0 && (
-                                  <div className="pt-3 border-t border-gray-200">
-                                    <h4 className="text-sm font-medium text-gray-500 mb-2">
-                                      Completed ({completedTasks.length})
-                                    </h4>
+                              ) : sectionTasks.length > 0 ? (
+                                <SortableContext 
+                                  items={sectionTasks.map(task => `task-${task.id}`)} 
+                                  strategy={verticalListSortingStrategy}
+                                >
+                                  <div className="space-y-3">
+                                    {/* Incomplete Tasks */}
                                     <div className="space-y-2">
-                                      {completedTasks.map(task => (
+                                      {incompleteTasks.map(task => (
                                         <SortableTaskItem key={task.id} task={task} />
                                       ))}
                                     </div>
+
+                                    {/* Completed Tasks */}
+                                    {completedTasks.length > 0 && (
+                                      <div className="pt-3 border-t border-gray-200">
+                                        <h4 className="text-sm font-medium text-gray-500 mb-2">
+                                          Completed ({completedTasks.length})
+                                        </h4>
+                                        <div className="space-y-2">
+                                          {completedTasks.map(task => (
+                                            <SortableTaskItem key={task.id} task={task} />
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                    
+                                    {/* Show filter context when priority filter is active and tasks are showing */}
+                                    {priorityFilter !== 'all' && sectionTasks.length < allSectionTasks.length && (
+                                      <div className="pt-3 border-t border-gray-100">
+                                        <div className="text-xs text-gray-500 text-center">
+                                          Showing {sectionTasks.length} of {allSectionTasks.length} tasks
+                                          ({priorityFilter === '1' ? 'high' : priorityFilter === '2' ? 'medium' : 'low'} priority only)
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
-                                )}
-                              </div>
-                            </SortableContext>
+                                </SortableContext>
+                              ) : (
+                                <div className="py-6 text-center">
+                                  <div className="text-sm text-gray-500">
+                                    No tasks in this section yet
+                                  </div>
+                                </div>
+                              )}
+                            </>
                           )}
                         </SortableSectionItem>
                       );
@@ -4783,49 +4818,75 @@ export default function Canvas() {
 
                 {/* Unsectioned Tasks with their own SortableContext */}
                 {(() => {
-                  const unsectionedTasks = filterTasksByPriority(
-                    todoListTasks
-                      .filter(task => !task.sectionId)
-                      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
-                  );
+                  // Get all unsectioned tasks (unfiltered) for context
+                  const allUnsectionedTasks = todoListTasks
+                    .filter(task => !task.sectionId)
+                    .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                  
+                  // Apply priority filtering to unsectioned tasks  
+                  const unsectionedTasks = filterTasksByPriority(allUnsectionedTasks);
                   
                   const completedUnsectioned = unsectionedTasks.filter(task => task.completed);
                   const incompleteUnsectioned = unsectionedTasks.filter(task => !task.completed);
 
-                  if (unsectionedTasks.length === 0) return null;
+                  // Check if area is empty due to filtering
+                  const isEmptyDueToFilter = allUnsectionedTasks.length > 0 && unsectionedTasks.length === 0 && priorityFilter !== 'all';
+
+                  if (unsectionedTasks.length === 0 && !isEmptyDueToFilter) return null;
 
                   return (
-                    <SortableContext 
-                      items={unsectionedTasks.map(task => `task-${task.id}`)} 
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <DroppableGeneralTasks>
-                        <div className="space-y-3">
-                          {/* Incomplete Unsectioned Tasks */}
-                          {incompleteUnsectioned.length > 0 && (
-                            <div className="space-y-2">
-                              {incompleteUnsectioned.map(task => (
-                                <SortableTaskItem key={task.id} task={task} />
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Completed Tasks */}
-                          {completedUnsectioned.length > 0 && (
-                            <div className="space-y-2">
-                              <h4 className="text-sm font-medium text-gray-500">
-                                Completed ({completedUnsectioned.length})
-                              </h4>
+                    <DroppableGeneralTasks>
+                      {isEmptyDueToFilter ? (
+                        <div className="py-6 text-center border-2 border-dashed border-gray-200 rounded-lg">
+                          <div className="text-sm text-gray-500">
+                            No {priorityFilter === '1' ? 'high' : priorityFilter === '2' ? 'medium' : 'low'} priority tasks outside sections
+                          </div>
+                          <div className="text-xs text-gray-400 mt-1">
+                            {allUnsectionedTasks.length} task{allUnsectionedTasks.length !== 1 ? 's' : ''} hidden by priority filter
+                          </div>
+                        </div>
+                      ) : (
+                        <SortableContext 
+                          items={unsectionedTasks.map(task => `task-${task.id}`)} 
+                          strategy={verticalListSortingStrategy}
+                        >
+                          <div className="space-y-3">
+                            {/* Incomplete Unsectioned Tasks */}
+                            {incompleteUnsectioned.length > 0 && (
                               <div className="space-y-2">
-                                {completedUnsectioned.map(task => (
+                                {incompleteUnsectioned.map(task => (
                                   <SortableTaskItem key={task.id} task={task} />
                                 ))}
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      </DroppableGeneralTasks>
-                    </SortableContext>
+                            )}
+
+                            {/* Completed Tasks */}
+                            {completedUnsectioned.length > 0 && (
+                              <div className="space-y-2">
+                                <h4 className="text-sm font-medium text-gray-500">
+                                  Completed ({completedUnsectioned.length})
+                                </h4>
+                                <div className="space-y-2">
+                                  {completedUnsectioned.map(task => (
+                                    <SortableTaskItem key={task.id} task={task} />
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Show filter context when priority filter is active and tasks are showing */}
+                            {priorityFilter !== 'all' && unsectionedTasks.length < allUnsectionedTasks.length && (
+                              <div className="pt-3 border-t border-gray-100">
+                                <div className="text-xs text-gray-500 text-center">
+                                  Showing {unsectionedTasks.length} of {allUnsectionedTasks.length} unsectioned tasks
+                                  ({priorityFilter === '1' ? 'high' : priorityFilter === '2' ? 'medium' : 'low'} priority only)
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </SortableContext>
+                      )}
+                    </DroppableGeneralTasks>
                   );
                 })()}
               </div>
