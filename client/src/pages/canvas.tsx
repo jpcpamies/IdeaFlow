@@ -146,6 +146,9 @@ export default function Canvas() {
   const [priorityFilter, setPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
   const [globalPriorityFilter, setGlobalPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
   
+  // Sidebar TodoList expand/collapse state
+  const [expandedSidebarTodoLists, setExpandedSidebarTodoLists] = useState<Set<string>>(new Set());
+  
   // TodoList management states
   const [editingTodoListId, setEditingTodoListId] = useState<string | null>(null);
   const [editingTodoListTitle, setEditingTodoListTitle] = useState('');
@@ -502,6 +505,25 @@ export default function Canvas() {
     },
     enabled: todoLists.length > 0,
   }) as { data: Task[] };
+
+  // Fetch sections for all TodoLists (for sidebar display)
+  const { data: allSections = [] } = useQuery({
+    queryKey: ['/api/todolists', 'sections'],
+    queryFn: async () => {
+      if (todoLists.length === 0) return [];
+      
+      const sectionPromises = todoLists.map(async (todoList: TodoList) => {
+        const response = await apiRequest('GET', `/api/todolists/${todoList.id}/sections`);
+        if (!response.ok) return [];
+        const sections = await response.json();
+        return sections.map((section: Section) => ({ ...section, todoListId: todoList.id }));
+      });
+      
+      const allSectionArrays = await Promise.all(sectionPromises);
+      return allSectionArrays.flat();
+    },
+    enabled: todoLists.length > 0,
+  }) as { data: Section[] };
 
   // Fetch sections for selected TodoList
   const { data: todoListSections = [] } = useQuery({
@@ -1243,6 +1265,42 @@ export default function Canvas() {
     return { completed: completedPriorityTasks, total: priorityTasks.length };
   };
 
+  // Get sections for a TodoList with filtered task counts
+  const getSectionsForTodoList = (todoListId: string) => {
+    const todoListSections = allSections.filter(section => section.todoListId === todoListId);
+    const todoListTasks = allTasks.filter(task => task.todoListId === todoListId);
+    
+    return todoListSections
+      .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+      .map(section => {
+        const sectionTasks = todoListTasks.filter(task => task.sectionId === section.id);
+        
+        if (globalPriorityFilter === 'all') {
+          const completedCount = sectionTasks.filter(task => task.completed).length;
+          return {
+            ...section,
+            taskCount: sectionTasks.length,
+            completedCount,
+            filteredTasks: sectionTasks,
+            hasMatchingTasks: true
+          };
+        }
+
+        const targetPriority = parseInt(globalPriorityFilter);
+        const priorityTasks = sectionTasks.filter(task => (task.priority || 3) === targetPriority);
+        const completedPriorityTasks = priorityTasks.filter(task => task.completed).length;
+        
+        return {
+          ...section,
+          taskCount: priorityTasks.length,
+          completedCount: completedPriorityTasks,
+          filteredTasks: priorityTasks,
+          hasMatchingTasks: priorityTasks.length > 0
+        };
+      })
+      .filter(section => section.hasMatchingTasks);
+  };
+
   const reorderTaskMutation = useMutation({
     mutationFn: async ({ id, orderIndex, sectionId }: { id: string; orderIndex: number; sectionId?: string | null }) => {
       const response = await apiRequest('PATCH', `/api/tasks/${id}/reorder`, { orderIndex, sectionId });
@@ -1506,10 +1564,25 @@ export default function Canvas() {
     }
   });
 
+  // Sidebar TodoList expand/collapse functions
+  const toggleSidebarTodoList = (todoListId: string) => {
+    setExpandedSidebarTodoLists(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(todoListId)) {
+        newSet.delete(todoListId);
+      } else {
+        newSet.add(todoListId);
+      }
+      return newSet;
+    });
+  };
+
   // TodoList Modal Functions
   const openTodoListModal = (todoList: TodoList) => {
     setSelectedTodoList(todoList);
     setIsTodoListModalOpen(true);
+    // Preserve global priority filter when opening modal
+    setPriorityFilter(globalPriorityFilter);
   };
 
   const closeTodoListModal = () => {
@@ -4108,21 +4181,38 @@ export default function Canvas() {
               return filteredTodoLists.map((todoList: TodoList) => {
                 // Get tasks for this specific TodoList
                 const currentTodoListTasks = allTasks.filter((task: Task) => task.todoListId === todoList.id);
+                const sectionsWithTasks = getSectionsForTodoList(todoList.id);
+                const unsectionedTasks = currentTodoListTasks.filter(task => !task.sectionId);
                 
-                // Apply global priority filter to these tasks
-                const displayTasks = globalPriorityFilter === 'all' 
-                  ? currentTodoListTasks
-                  : currentTodoListTasks.filter(task => (task.priority || 3) === parseInt(globalPriorityFilter));
+                // Apply global priority filter to unsectioned tasks
+                const displayUnsectionedTasks = globalPriorityFilter === 'all' 
+                  ? unsectionedTasks
+                  : unsectionedTasks.filter(task => (task.priority || 3) === parseInt(globalPriorityFilter));
                 
                 const taskCounts = getFilteredTaskCounts(todoList.id, allTasks);
                 const completedCount = taskCounts.completed;
                 const totalCount = taskCounts.total;
-                const pendingCount = totalCount - completedCount;
+                const isExpanded = expandedSidebarTodoLists.has(todoList.id);
+                const shouldShowSections = globalPriorityFilter !== 'all' && sectionsWithTasks.length > 0;
                 
                 return (
                   <div key={todoList.id} className="bg-gray-50 rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                      <div className="flex items-center space-x-2 flex-1">
+                        <h3 className="font-medium text-gray-900 text-sm">{todoList.name}</h3>
+                        {shouldShowSections && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => toggleSidebarTodoList(todoList.id)}
+                            className="h-5 w-5 p-0 hover:bg-gray-200"
+                            title={isExpanded ? "Collapse sections" : "Expand sections"}
+                            data-testid={`button-toggle-sidebar-todolist-${todoList.id}`}
+                          >
+                            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                          </Button>
+                        )}
+                      </div>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -4135,42 +4225,86 @@ export default function Canvas() {
                       </Button>
                     </div>
                     
-                    <div className="space-y-2">
-                      {displayTasks.length === 0 ? (
-                        <div className="text-center py-2">
-                          <p className="text-xs text-gray-500">No tasks</p>
-                        </div>
-                      ) : (
-                        displayTasks.map((task: Task) => (
-                          <div 
-                            key={task.id} 
-                            className="flex items-start space-x-2 group"
-                            data-testid={`task-${task.id}`}
-                          >
-                            <Checkbox
-                              checked={Boolean(task.completed)}
-                              onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
-                              className="mt-0.5"
-                              data-testid={`checkbox-task-${task.id}`}
-                            />
-                            <span 
-                              className={`text-sm flex-1 ${
-                                task.completed 
-                                  ? 'line-through text-gray-400' 
-                                  : 'text-gray-700'
-                              }`}
-                            >
-                              {task.title}
-                            </span>
+                    {/* Section Preview Structure when priority filter is active */}
+                    {shouldShowSections && isExpanded ? (
+                      <div className="space-y-3">
+                        {sectionsWithTasks.map(section => (
+                          <div key={section.id} className="border-l-2 border-gray-300 pl-3">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="text-xs text-gray-600">📁</span>
+                              <span className="text-xs font-medium text-gray-700">{section.name}</span>
+                              <span className="text-xs text-gray-500">
+                                ({section.taskCount} {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority task{section.taskCount !== 1 ? 's' : ''})
+                              </span>
+                            </div>
                           </div>
-                        ))
-                      )}
-                    </div>
+                        ))}
+                        
+                        {/* Show unsectioned tasks if any */}
+                        {displayUnsectionedTasks.length > 0 && (
+                          <div className="border-l-2 border-gray-300 pl-3">
+                            <div className="flex items-center space-x-2 mb-1">
+                              <span className="text-xs text-gray-600">📄</span>
+                              <span className="text-xs font-medium text-gray-700">Unsectioned</span>
+                              <span className="text-xs text-gray-500">
+                                ({displayUnsectionedTasks.length} task{displayUnsectionedTasks.length !== 1 ? 's' : ''})
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : !shouldShowSections ? (
+                      /* Standard task display when no priority filter or no sections */
+                      <div className="space-y-2">
+                        {currentTodoListTasks.length === 0 ? (
+                          <div className="text-center py-2">
+                            <p className="text-xs text-gray-500">No tasks</p>
+                          </div>
+                        ) : (
+                          (globalPriorityFilter === 'all' ? currentTodoListTasks : currentTodoListTasks.filter(task => (task.priority || 3) === parseInt(globalPriorityFilter)))
+                          .slice(0, 3) // Show only first 3 tasks to save space
+                          .map((task: Task) => (
+                            <div 
+                              key={task.id} 
+                              className="flex items-start space-x-2 group"
+                              data-testid={`task-${task.id}`}
+                            >
+                              <Checkbox
+                                checked={Boolean(task.completed)}
+                                onCheckedChange={() => handleToggleTask(task.id, Boolean(task.completed))}
+                                className="mt-0.5"
+                                data-testid={`checkbox-task-${task.id}`}
+                              />
+                              <span 
+                                className={`text-sm flex-1 ${
+                                  task.completed 
+                                    ? 'line-through text-gray-400' 
+                                    : 'text-gray-700'
+                                }`}
+                              >
+                                {task.title}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                        {currentTodoListTasks.length > 3 && (
+                          <div className="text-xs text-gray-500 text-center">
+                            +{currentTodoListTasks.length - 3} more tasks
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      /* Collapsed state - show summary */
+                      <div className="text-xs text-gray-600">
+                        {sectionsWithTasks.length} section{sectionsWithTasks.length !== 1 ? 's' : ''} with {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority tasks
+                      </div>
+                    )}
                     
                     {totalCount > 0 && (
                       <div className="mt-3 pt-3 border-t border-gray-100">
                         <div className="text-xs text-gray-500">
                           {completedCount} of {totalCount} completed
+                          {globalPriorityFilter !== 'all' && ` (${globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority only)`}
                         </div>
                       </div>
                     )}
