@@ -144,6 +144,7 @@ export default function Canvas() {
   const [isTodoListModalOpen, setIsTodoListModalOpen] = useState(false);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [priorityFilter, setPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
+  const [globalPriorityFilter, setGlobalPriorityFilter] = useState<'all' | '1' | '2' | '3'>('all');
   
   // TodoList management states
   const [editingTodoListId, setEditingTodoListId] = useState<string | null>(null);
@@ -1200,6 +1201,46 @@ export default function Canvas() {
     if (priorityFilter === 'all') return tasks;
     const targetPriority = parseInt(priorityFilter);
     return tasks.filter(task => (task.priority || 3) === targetPriority);
+  };
+
+  // Global filter for TodoLists in sidebar
+  const filterTodoListsByPriority = (todoLists: TodoList[], allTasks: Task[]) => {
+    if (globalPriorityFilter === 'all') return todoLists;
+    
+    const targetPriority = parseInt(globalPriorityFilter);
+    
+    // Filter TodoLists that contain tasks of the selected priority
+    const filteredLists = todoLists.filter(todoList => {
+      const todoListTasks = allTasks.filter(task => task.todoListId === todoList.id);
+      return todoListTasks.some(task => (task.priority || 3) === targetPriority);
+    });
+
+    // Sort by concentration of selected priority tasks (most first)
+    return filteredLists.sort((a, b) => {
+      const aTasksOfPriority = allTasks.filter(task => 
+        task.todoListId === a.id && (task.priority || 3) === targetPriority
+      ).length;
+      const bTasksOfPriority = allTasks.filter(task => 
+        task.todoListId === b.id && (task.priority || 3) === targetPriority
+      ).length;
+      return bTasksOfPriority - aTasksOfPriority; // Descending order
+    });
+  };
+
+  // Get filtered task counts for a TodoList based on global filter
+  const getFilteredTaskCounts = (todoListId: string, allTasks: Task[]) => {
+    const todoListTasks = allTasks.filter(task => task.todoListId === todoListId);
+    
+    if (globalPriorityFilter === 'all') {
+      const completedCount = todoListTasks.filter(task => task.completed).length;
+      return { completed: completedCount, total: todoListTasks.length };
+    }
+
+    const targetPriority = parseInt(globalPriorityFilter);
+    const priorityTasks = todoListTasks.filter(task => (task.priority || 3) === targetPriority);
+    const completedPriorityTasks = priorityTasks.filter(task => task.completed).length;
+    
+    return { completed: completedPriorityTasks, total: priorityTasks.length };
   };
 
   const reorderTaskMutation = useMutation({
@@ -4010,7 +4051,22 @@ export default function Canvas() {
         {/* Right Sidebar - To-Do Lists */}
         {isRightSidebarOpen && (
         <aside className="w-80 bg-white border-l border-gray-200 flex flex-col">
+          {/* Global Priority Filter */}
           <div className="p-4 border-b border-gray-200">
+            <div className="flex items-center space-x-3 mb-3">
+              <label className="text-sm font-medium text-gray-700">Filter by Priority:</label>
+              <Select value={globalPriorityFilter} onValueChange={(value: 'all' | '1' | '2' | '3') => setGlobalPriorityFilter(value)}>
+                <SelectTrigger className="w-44 h-8 text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all" className="text-sm">All</SelectItem>
+                  <SelectItem value="1" className="text-sm text-red-600">High Priority Tasks</SelectItem>
+                  <SelectItem value="2" className="text-sm text-yellow-600">Medium Priority Tasks</SelectItem>
+                  <SelectItem value="3" className="text-sm text-green-600">Low Priority Tasks</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center justify-between">
               <h2 className="font-semibold text-gray-900">To-Do Lists</h2>
               <Button
@@ -4029,16 +4085,30 @@ export default function Canvas() {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            {todoLists.length === 0 ? (
-              <div className="text-center text-gray-500 text-sm py-4">
-                <p>No todo lists yet.</p>
-                <p className="mt-1">Create a group with ideas, then use "Create TodoList" from the group menu.</p>
-              </div>
-            ) : (
-              todoLists.map((todoList: TodoList) => {
-                const todoListTasks = allTasks.filter((task: Task) => task.todoListId === todoList.id);
-                const completedCount = todoListTasks.filter((task: Task) => task.completed).length;
-                const totalCount = todoListTasks.length;
+            {(() => {
+              const filteredTodoLists = filterTodoListsByPriority(todoLists, allTasks);
+              
+              if (todoLists.length === 0) {
+                return (
+                  <div className="text-center text-gray-500 text-sm py-4">
+                    <p>No todo lists yet.</p>
+                    <p className="mt-1">Create a group with ideas, then use "Create TodoList" from the group menu.</p>
+                  </div>
+                );
+              }
+
+              if (filteredTodoLists.length === 0 && globalPriorityFilter !== 'all') {
+                return (
+                  <div className="text-center text-gray-500 text-sm py-4">
+                    <p>No TodoLists contain {globalPriorityFilter === '1' ? 'high' : globalPriorityFilter === '2' ? 'medium' : 'low'} priority tasks.</p>
+                  </div>
+                );
+              }
+
+              return filteredTodoLists.map((todoList: TodoList) => {
+                const taskCounts = getFilteredTaskCounts(todoList.id, allTasks);
+                const completedCount = taskCounts.completed;
+                const totalCount = taskCounts.total;
                 const pendingCount = totalCount - completedCount;
                 
                 return (
@@ -4098,8 +4168,8 @@ export default function Canvas() {
                     )}
                   </div>
                 );
-              })
-            )}
+              });
+            })()}
           </div>
 
           <div className="p-4 border-t border-gray-200">

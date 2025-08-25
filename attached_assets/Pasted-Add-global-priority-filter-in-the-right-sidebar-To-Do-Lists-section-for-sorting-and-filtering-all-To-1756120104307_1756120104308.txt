@@ -1,0 +1,44 @@
+Add global priority filter in the right sidebar To-Do Lists section for sorting and filtering all TodoLists by task priorities.
+
+CURRENT STATUS: ✅ 
+- Priority filtering works inside individual TodoList modals
+- Sidebar shows all TodoLists with task counts (e.g., "0 of 2 completed")
+
+NEW REQUIREMENT:
+Add a global priority filter at the top of the right sidebar that affects all visible TodoLists simultaneously.
+
+IMPLEMENTATION DETAILS:
+
+1. **Filter Position:**
+   - Add filter above the "To-Do Lists" heading in right sidebar
+   - Layout: "Filter by Priority: [All ▼]" aligned to the left
+
+2. **Filter Options:**
+   - "All" (default - shows all TodoLists normally)
+   - "High Priority Tasks" (shows only TodoLists that contain priority 1 tasks)
+   - "Medium Priority Tasks" (shows only TodoLists that contain priority 2 tasks)  
+   - "Low Priority Tasks" (shows only TodoLists that contain priority 3 tasks)
+
+3. **Filtering Logic:**
+   - When filter is active, hide TodoLists that don't contain tasks of selected priority
+   - Show task counts only for filtered priority level
+   - Example: If "High Priority Tasks" selected, "2G" shows "0 of 1 completed" (only counting high priority tasks)
+   - TodoLists with no tasks of selected priority should be hidden completely
+
+4. **Visual Feedback:**
+   - Clear indication when filter is active (not "All")
+   - Update task counters to reflect filtered results
+   - Smooth transitions when TodoLists appear/disappear
+
+5. **Sorting Enhancement:**
+   - When filter active, sort TodoLists by:
+     * Most high-priority tasks first (when "High Priority Tasks" selected)
+     * Highest concentration of selected priority level
+
+VALIDATION TESTS:
+- Select "High Priority Tasks" → only TodoLists containing priority 1 tasks visible
+- Task counters show only high priority task progress  
+- Select "All" → all TodoLists return to normal view
+- Verify integration works with existing modal filters
+
+This creates a powerful overview for focusing on priority-based work across all TodoLists.
